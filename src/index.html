@@ -1,0 +1,1952 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="light dark" />
+<title>IEP Copilot — private, on-device IEP review</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%233047c9'/%3E%3Cpath d='M10 16.5l4 4 8-9' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<script>
+  // Apply saved/system theme before first paint (no flash)
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem("iep-theme"); } catch (e) {}
+    if (!t) t = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  :root {
+    --bg: #f5f4ef; --surface: #ffffff; --surface-2: #f2f0ea; --surface-3: #e9e6dd;
+    --border: #e3dfd5; --border-strong: #cec8ba;
+    --text: #1c1b18; --text-2: #46433c; --muted: #7a766c;
+    --accent: #3047c9; --accent-hover: #2537a6; --accent-soft: #e8ebfc; --accent-text: #2a3db0; --on-accent: #ffffff;
+    --ok: #137a4b; --ok-soft: #e0f3e8; --warn: #9a5a06; --warn-soft: #fbf0db; --bad: #b4271c; --bad-soft: #fbe6e3;
+    --ins-bg: #d3f0de; --ins-text: #0b5832; --del-bg: #f9dad6; --del-text: #8c1d13;
+    --shadow-sm: 0 1px 2px rgba(28, 27, 24, .06);
+    --shadow: 0 1px 2px rgba(28, 27, 24, .04), 0 10px 30px -14px rgba(28, 27, 24, .22);
+    --ring: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent);
+    --radius: 16px; --radius-sm: 10px;
+    --font: "Inter var", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Charter", "Georgia", "Cambria", serif;
+  }
+  [data-theme="dark"] {
+    --bg: #0f1115; --surface: #161920; --surface-2: #1c2029; --surface-3: #252a36;
+    --border: #262b36; --border-strong: #363c4a;
+    --text: #eceef2; --text-2: #c4c8d1; --muted: #8b919d;
+    --accent: #8394ff; --accent-hover: #9dabff; --accent-soft: #1f2548; --accent-text: #b0bbff; --on-accent: #0f1115;
+    --ok: #52cc8f; --ok-soft: #13301f; --warn: #f2b453; --warn-soft: #33270f; --bad: #ff7d71; --bad-soft: #3b1815;
+    --ins-bg: #153b26; --ins-text: #94f1bd; --del-bg: #461a1a; --del-text: #ffaca4;
+    --shadow-sm: none;
+    --shadow: 0 0 0 1px rgba(255, 255, 255, .02), 0 14px 36px -18px rgba(0, 0, 0, .7);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--font);
+    font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+  :focus-visible { outline: none; box-shadow: var(--ring); border-radius: 8px; }
+  .hidden { display: none !important; }
+  .ic { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .ic.lg { width: 20px; height: 20px; }
+  .ic.xl { width: 26px; height: 26px; }
+  kbd {
+    font-family: var(--mono); font-size: 10.5px; padding: 1px 6px; border-radius: 5px;
+    border: 1px solid color-mix(in srgb, currentColor 30%, transparent); opacity: .8;
+  }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  /* ---------- Top bar ---------- */
+  .topbar {
+    position: sticky; top: 0; z-index: 20; height: 64px;
+    display: flex; align-items: center; gap: 16px; padding: 0 24px;
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    backdrop-filter: saturate(1.4) blur(12px); -webkit-backdrop-filter: saturate(1.4) blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: center; gap: 11px; }
+  .logo {
+    width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;
+    background: linear-gradient(140deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #9b5de5));
+    color: #fff; box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--accent) 70%, transparent);
+  }
+  .logo .ic { stroke-width: 2.4; width: 18px; height: 18px; }
+  .brand-name { font-weight: 700; font-size: 15px; letter-spacing: -.01em; }
+  .brand-sub { font-size: 12px; color: var(--muted); margin-top: -2px; }
+  .top-spacer { flex: 1; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px;
+    border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap;
+    background: var(--surface); border: 1px solid var(--border); color: var(--text-2);
+  }
+  .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+  .pill.ok .dot { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 20%, transparent); }
+  .pill.warn .dot { background: var(--warn); }
+  .pill.bad .dot { background: var(--bad); }
+  .pill.busy .dot { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+  .pill.privacy { background: var(--ok-soft); border-color: transparent; color: var(--ok); }
+  .icon-btn {
+    width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;
+    background: transparent; border: 1px solid var(--border); color: var(--text-2);
+  }
+  .icon-btn:hover { background: var(--surface); color: var(--text); }
+  @keyframes pulse { 50% { opacity: .35; } }
+
+  /* ---------- Layout ---------- */
+  .layout {
+    display: grid; grid-template-columns: 372px minmax(0, 1fr); gap: 20px;
+    padding: 20px 24px 24px; max-width: 1480px; margin: 0 auto;
+  }
+  .rail { display: flex; flex-direction: column; gap: 14px; }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); }
+  .step { padding: 16px; }
+  .step-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+  .step-head h2 { margin: 0; font-size: 14px; font-weight: 650; letter-spacing: -.005em; }
+  .step-head p { margin: 1px 0 0; font-size: 12px; color: var(--muted); }
+  .step-num {
+    width: 26px; height: 26px; border-radius: 8px; flex: none; display: grid; place-items: center;
+    font-size: 12px; font-weight: 700; background: var(--surface-2); color: var(--text-2); border: 1px solid var(--border);
+    transition: all .2s;
+  }
+  .step.done .step-num { background: var(--ok); border-color: var(--ok); color: #fff; }
+  [data-theme="dark"] .step.done .step-num { color: #0f1115; }
+  .rail-foot { font-size: 11.5px; color: var(--muted); margin: 2px 6px 0; line-height: 1.45; }
+
+  /* ---------- Buttons ---------- */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    height: 34px; padding: 0 13px; border-radius: 10px; font-size: 13px; font-weight: 550;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    transition: background .15s, border-color .15s, transform .05s, color .15s; white-space: nowrap;
+  }
+  .btn:hover:not(:disabled) { background: var(--surface-2); border-color: var(--border-strong); }
+  .btn:active:not(:disabled) { transform: translateY(1px); }
+  .btn:disabled { opacity: .5; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); box-shadow: 0 6px 18px -10px var(--accent); }
+  .btn.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+  .btn.success { background: var(--ok); border-color: var(--ok); color: #fff; }
+  [data-theme="dark"] .btn.success { color: #0f1115; }
+  .btn.success:hover:not(:disabled) { filter: brightness(1.07); background: var(--ok); }
+  .btn.danger { background: var(--bad); border-color: var(--bad); color: #fff; }
+  .btn.danger:hover:not(:disabled) { filter: brightness(1.07); background: var(--bad); }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--text-2); }
+  .btn.ghost:hover:not(:disabled) { background: var(--surface-2); color: var(--text); border-color: transparent; }
+  .btn.sm { height: 28px; padding: 0 10px; font-size: 12px; border-radius: 8px; gap: 5px; }
+  .btn.lg { height: 44px; font-size: 14px; border-radius: 12px; width: 100%; }
+
+  /* ---------- Model picker ---------- */
+  .model-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+  .model-opt {
+    position: relative; display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+    border: 1px solid var(--border); border-radius: 12px; cursor: pointer; transition: border-color .15s, background .15s;
+  }
+  .model-opt:hover { border-color: var(--border-strong); }
+  .model-opt input { position: absolute; opacity: 0; pointer-events: none; }
+  .model-opt .radio {
+    width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--border-strong); flex: none; display: grid; place-items: center;
+  }
+  .model-opt.sel { border-color: var(--accent); background: var(--accent-soft); }
+  .model-opt.sel .radio { border-color: var(--accent); }
+  .model-opt.sel .radio::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+  .model-opt:has(input:focus-visible) { box-shadow: var(--ring); }
+  .model-opt.disabled { opacity: .55; cursor: not-allowed; }
+  .mo-main { flex: 1; min-width: 0; }
+  .mo-name { font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+  .mo-detail { font-size: 11.5px; color: var(--muted); }
+  .mo-size { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .tag {
+    font-size: 10px; font-weight: 650; text-transform: uppercase; letter-spacing: .04em;
+    padding: 1px 6px; border-radius: 5px; background: var(--surface-3); color: var(--text-2);
+  }
+  .tag.accent { background: var(--accent); color: var(--on-accent); }
+  .tag.ok { background: var(--ok-soft); color: var(--ok); }
+  .tag.warn { background: var(--warn-soft); color: var(--warn); }
+  .tag.loaded { background: var(--ok); color: #fff; }
+  [data-theme="dark"] .tag.loaded { color: #0f1115; }
+
+  .load-box { border: 1px solid var(--border); background: var(--surface-2); border-radius: 12px; padding: 11px 12px; }
+  .load-top { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; margin-bottom: 8px; }
+  .bar { height: 6px; background: var(--surface-3); border-radius: 99px; overflow: hidden; }
+  .bar > span { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 99px; transition: width .3s ease; }
+  .load-text { font-size: 11px; color: var(--muted); margin-top: 7px; font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ready-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--ok-soft); color: var(--ok); font-size: 12.5px; font-weight: 600; }
+  .ready-row .grow { flex: 1; }
+  .note { font-size: 12px; color: var(--muted); margin: 8px 2px 0; line-height: 1.45; }
+  .note.bad { color: var(--bad); }
+  .callout {
+    display: flex; gap: 9px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; font-size: 12px; line-height: 1.45;
+    background: var(--bad-soft); color: var(--bad);
+  }
+  .callout.warn { background: var(--warn-soft); color: var(--warn); }
+  .callout .ic { margin-top: 1px; }
+
+  /* ---------- Document slots ---------- */
+  .slot + .slot { margin-top: 8px; }
+  .dropzone {
+    width: 100%; display: flex; align-items: center; gap: 12px; text-align: left; padding: 13px 14px;
+    border: 1.5px dashed var(--border-strong); border-radius: 12px; background: transparent;
+    transition: border-color .15s, background .15s;
+  }
+  .dropzone:hover, .dropzone.drag { border-color: var(--accent); background: var(--accent-soft); }
+  .dz-icon { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--surface-2); color: var(--text-2); flex: none; }
+  .dropzone.primary .dz-icon { background: var(--accent-soft); color: var(--accent-text); }
+  .dz-title { font-weight: 600; font-size: 13px; display: flex; gap: 6px; align-items: center; }
+  .dz-sub { font-size: 11.5px; color: var(--muted); }
+  .file-card { border: 1px solid var(--border); border-radius: 12px; padding: 11px 12px; background: var(--surface); }
+  .file-card.drag { border-color: var(--accent); background: var(--accent-soft); }
+  .fc-row { display: flex; align-items: center; gap: 11px; }
+  .fc-icon { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--bad-soft); color: var(--bad); flex: none; font-size: 9.5px; font-weight: 800; letter-spacing: .03em; }
+  .fc-main { flex: 1; min-width: 0; }
+  .fc-name { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fc-meta { font-size: 11.5px; color: var(--muted); }
+  .fc-extra { margin-top: 9px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 550;
+    padding: 3px 8px; border-radius: 7px; background: var(--surface-2); color: var(--text-2); border: 0;
+  }
+  .chip.ok { background: var(--ok-soft); color: var(--ok); }
+  .chip.warn { background: var(--warn-soft); color: var(--warn); }
+  button.chip:hover { filter: brightness(.97); }
+  .spinner {
+    width: 16px; height: 16px; border-radius: 50%; flex: none;
+    border: 2px solid color-mix(in srgb, currentColor 25%, transparent); border-top-color: currentColor;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .meter { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .meter-top { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; margin-bottom: 7px; }
+  .meter-top b { font-weight: 600; }
+  .meter-top span { color: var(--muted); font-variant-numeric: tabular-nums; font-family: var(--mono); font-size: 11px; }
+  .meter .bar > span { background: var(--ok); }
+  .meter.warn .bar > span { background: var(--warn); }
+  .meter.over .bar > span { background: var(--bad); }
+  .meter-note { font-size: 11.5px; color: var(--muted); margin-top: 6px; }
+
+  /* ---------- Task list ---------- */
+  .task-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+  .task {
+    position: relative; display: flex; align-items: center; gap: 11px; padding: 9px 10px; border-radius: 12px; cursor: pointer;
+    border: 1px solid transparent; transition: background .12s, border-color .12s;
+  }
+  .task input { position: absolute; opacity: 0; pointer-events: none; }
+  .task:hover { background: var(--surface-2); }
+  .task.sel { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+  .task:has(input:focus-visible) { box-shadow: var(--ring); }
+  .task-icon { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; background: var(--surface-2); color: var(--text-2); flex: none; }
+  .task.sel .task-icon { background: var(--accent); color: var(--on-accent); }
+  .task-title { font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+  .task-desc { font-size: 11.5px; color: var(--muted); }
+
+  /* ---------- Workspace ---------- */
+  .workspace {
+    display: flex; flex-direction: column; min-width: 0;
+    position: sticky; top: 84px; height: calc(100vh - 104px); min-height: 560px; box-shadow: var(--shadow);
+  }
+  .ws-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 12px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .tabs { display: inline-flex; max-width: 100%; overflow-x: auto; padding: 3px; background: var(--surface-2); border-radius: 11px; gap: 2px; }
+  .tab {
+    display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 13px; border-radius: 8px;
+    border: 0; background: transparent; color: var(--muted); font-size: 13px; font-weight: 600;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm), 0 0 0 1px var(--border); }
+  .count {
+    min-width: 19px; height: 19px; padding: 0 5px; border-radius: 99px; font-size: 11px; font-weight: 700;
+    display: inline-grid; place-items: center; background: var(--surface-3); color: var(--text-2); font-variant-numeric: tabular-nums;
+  }
+  .tab.active .count.has { background: var(--accent); color: var(--on-accent); }
+  .ws-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+  .progress {
+    display: flex; align-items: center; gap: 12px; margin: 12px 14px 0; padding: 10px 14px; border-radius: 12px;
+    background: var(--accent-soft); color: var(--accent-text);
+  }
+  .progress .grow { flex: 1; min-width: 0; }
+  .progress .stage { font-weight: 600; font-size: 13px; }
+  .progress .sub { font-size: 11.5px; opacity: .8; }
+  .progress .time { font-family: var(--mono); font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 7px; background: var(--surface); font-variant-numeric: tabular-nums; }
+  .progress .indeterminate { height: 3px; border-radius: 3px; margin-top: 6px; overflow: hidden; background: color-mix(in srgb, var(--accent) 18%, transparent); position: relative; }
+  .progress .indeterminate::after { content: ""; position: absolute; inset: 0; width: 35%; background: var(--accent); border-radius: 3px; animation: slide 1.3s ease-in-out infinite; }
+  @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(290%); } }
+
+  .ws-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 18px 22px; }
+
+  /* Empty state */
+  .empty { max-width: 560px; margin: 28px auto; text-align: center; }
+  .empty-art {
+    width: 64px; height: 64px; margin: 0 auto 16px; border-radius: 18px; display: grid; place-items: center;
+    background: linear-gradient(140deg, var(--accent-soft), color-mix(in srgb, var(--accent-soft) 40%, var(--surface)));
+    color: var(--accent-text); border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+  .empty h3 { margin: 0 0 6px; font-size: 20px; letter-spacing: -.02em; font-weight: 700; }
+  .empty > p { margin: 0 auto 22px; color: var(--muted); max-width: 420px; }
+  .checklist { text-align: left; border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+  .check-item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
+  .check-item + .check-item { border-top: 1px solid var(--border); }
+  .check-mark { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; border: 1.5px solid var(--border-strong); flex: none; color: transparent; }
+  .check-item.done .check-mark { background: var(--ok); border-color: var(--ok); color: #fff; }
+  .check-item.done .check-mark .ic { width: 13px; height: 13px; stroke-width: 3; }
+  .check-item .ci-title { font-weight: 600; font-size: 13px; }
+  .check-item.done .ci-title { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--border-strong); }
+  .check-item .ci-sub { font-size: 12px; color: var(--muted); }
+  .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 18px; text-align: left; }
+  .feature { padding: 12px; border-radius: 12px; background: var(--surface-2); }
+  .feature .ic { color: var(--accent-text); margin-bottom: 6px; }
+  .feature b { display: block; font-size: 12.5px; }
+  .feature span { font-size: 11.5px; color: var(--muted); }
+
+  /* Output */
+  .out-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .out-meta .title { font-weight: 650; font-size: 13px; }
+  .out-warn { margin-bottom: 12px; }
+  .raw {
+    margin: 0; font-family: var(--mono); font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+    color: var(--text-2); background: var(--surface-2); border-radius: 12px; padding: 14px 16px;
+  }
+  .prose { font-size: 14px; line-height: 1.65; color: var(--text); max-width: 760px; }
+  .prose h2, .prose h3, .prose h4 { letter-spacing: -.01em; line-height: 1.3; margin: 1.4em 0 .5em; }
+  .prose h2 { font-size: 18px; } .prose h3 { font-size: 16px; } .prose h4 { font-size: 14px; }
+  .prose > :first-child { margin-top: 0; }
+  .prose p { margin: 0 0 .8em; }
+  .prose ul, .prose ol { margin: 0 0 .9em; padding-left: 1.3em; }
+  .prose li { margin: .25em 0; }
+  .prose li::marker { color: var(--muted); }
+  .prose code { font-family: var(--mono); font-size: 12px; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
+  .prose hr { border: 0; border-top: 1px solid var(--border); margin: 1.6em 0; }
+  .caret { display: inline-block; width: 7px; height: 15px; vertical-align: -2px; background: var(--accent); border-radius: 2px; margin-left: 2px; animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* Fix queue */
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 18px; border-bottom: 1px solid var(--border); }
+  .filters { display: flex; gap: 4px; flex-wrap: wrap; }
+  .filter {
+    height: 28px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--border); background: transparent;
+    font-size: 12px; font-weight: 600; color: var(--text-2); display: inline-flex; align-items: center; gap: 6px;
+  }
+  .filter:hover { background: var(--surface-2); }
+  .filter.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .filter .n { font-variant-numeric: tabular-nums; opacity: .7; }
+  .tb-right { display: flex; gap: 6px; align-items: center; }
+  .hint { font-size: 11.5px; color: var(--muted); display: flex; gap: 10px; align-items: center; padding: 8px 18px 0; }
+  .hint kbd { opacity: .7; }
+
+  .fix-list { display: flex; flex-direction: column; gap: 12px; }
+  .fix {
+    border: 1px solid var(--border); border-radius: 14px; background: var(--surface); overflow: hidden;
+    transition: border-color .15s, box-shadow .15s, opacity .15s; scroll-margin: 12px;
+  }
+  .fix:focus { outline: none; }
+  .fix:focus-visible, .fix.focused { border-color: var(--accent); box-shadow: var(--ring); }
+  .fix.approved { border-color: color-mix(in srgb, var(--ok) 55%, transparent); }
+  .fix.rejected { opacity: .55; }
+  .fix-head { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px 0; }
+  .fix-head .grow { flex: 1; min-width: 0; }
+  .fix-badges { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 4px; }
+  .src { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 650; padding: 2px 7px; border-radius: 6px; }
+  .src .ic { width: 12px; height: 12px; }
+  .src.scan { background: var(--warn-soft); color: var(--warn); }
+  .src.ai { background: var(--accent-soft); color: var(--accent-text); }
+  .page-chip { font-size: 11px; font-weight: 650; padding: 2px 7px; border-radius: 6px; background: var(--surface-2); color: var(--text-2); }
+  .fix-issue { font-weight: 600; font-size: 13.5px; line-height: 1.4; margin: 0; }
+  .fix-note { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .status { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 99px; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
+  .status .ic { width: 12px; height: 12px; stroke-width: 2.5; }
+  .status.pending { background: var(--surface-2); color: var(--muted); }
+  .status.approved { background: var(--ok-soft); color: var(--ok); }
+  .status.rejected { background: var(--bad-soft); color: var(--bad); }
+  .diff { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px 14px; }
+  .pane { border-radius: 10px; padding: 10px 12px; background: var(--surface-2); min-width: 0; display: flex; flex-direction: column; }
+  .pane-label { min-height: 22px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center; }
+  .pane-text { font-family: var(--serif); font-size: 14px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+  .pane del { background: var(--del-bg); color: var(--del-text); text-decoration: line-through; text-decoration-thickness: 1px; border-radius: 3px; padding: 0 1px; }
+  .pane ins { background: var(--ins-bg); color: var(--ins-text); text-decoration: none; border-radius: 3px; padding: 0 1px; font-weight: 600; }
+  .pane textarea {
+    flex: 1; width: 100%; min-height: 90px; resize: vertical; border: 1px solid var(--accent); border-radius: 8px;
+    background: var(--surface); padding: 8px 10px; font-family: var(--serif); font-size: 14px; line-height: 1.5;
+  }
+  .pane textarea:focus { outline: none; box-shadow: var(--ring); }
+  .fix-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 14px 12px; flex-wrap: wrap; }
+  .fix-foot .left, .fix-foot .right { display: flex; gap: 6px; align-items: center; }
+  .located { font-size: 11.5px; display: inline-flex; align-items: center; gap: 4px; font-weight: 550; }
+  .located .ic { width: 13px; height: 13px; }
+  .located.ok { color: var(--ok); }
+  .located.no { color: var(--warn); }
+
+  /* Final document */
+  .final-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; padding: 12px 18px; border-bottom: 1px solid var(--border); }
+  .stats { display: flex; gap: 8px; flex-wrap: wrap; }
+  .doc-wrap { flex: 1; min-height: 0; padding: 16px 18px 18px; display: flex; background: var(--surface-2); border-radius: 0 0 var(--radius) var(--radius); }
+  .doc {
+    flex: 1; width: 100%; max-width: 860px; margin: 0 auto; resize: none; border: 1px solid var(--border); border-radius: 12px;
+    background: var(--surface); padding: 28px 34px; font-family: var(--serif); font-size: 14.5px; line-height: 1.7;
+    box-shadow: var(--shadow);
+  }
+  .doc:focus { outline: none; border-color: var(--accent); }
+
+  /* Toasts */
+  .toasts { position: fixed; right: 20px; bottom: 20px; z-index: 50; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; pointer-events: none; }
+  .toast {
+    pointer-events: auto; display: flex; align-items: center; gap: 10px; max-width: 420px; padding: 11px 14px; border-radius: 12px;
+    background: var(--text); color: var(--bg); font-size: 13px; font-weight: 500; box-shadow: 0 12px 32px -10px rgba(0,0,0,.4);
+    animation: toastIn .22s cubic-bezier(.2,.9,.3,1.2);
+  }
+  .toast.ok .ic { color: #4ade80; } .toast.warn .ic { color: #fbbf24; } .toast.bad .ic { color: #f87171; }
+  [data-theme="dark"] .toast.ok .ic { color: var(--ok); } [data-theme="dark"] .toast.warn .ic { color: #a15c07; } [data-theme="dark"] .toast.bad .ic { color: #b4271c; }
+  .toast button { border: 0; background: color-mix(in srgb, var(--bg) 18%, transparent); color: inherit; font-weight: 650; font-size: 12px; padding: 4px 9px; border-radius: 7px; }
+  .toast.out { animation: toastOut .18s ease forwards; }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(10px) scale(.97); } }
+  @keyframes toastOut { to { opacity: 0; transform: translateY(6px); } }
+
+  /* Responsive */
+  @media (max-width: 1080px) {
+    .layout { grid-template-columns: 1fr; }
+    .workspace { position: static; height: auto; min-height: 640px; }
+    .ws-body { min-height: 560px; }
+  }
+  @media (max-width: 720px) {
+    .topbar { padding: 0 14px; }
+    .pill.privacy, #hw-chip, .brand-sub { display: none; }
+    .layout { padding: 14px; }
+    .diff { grid-template-columns: 1fr; }
+    .features { grid-template-columns: 1fr; }
+    .tab .lbl-long { display: none; }
+    .doc { padding: 18px; }
+  }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .001ms !important; transition: none !important; } }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo"><i data-icon="check"></i></div>
+      <div>
+        <div class="brand-name">IEP Copilot</div>
+        <div class="brand-sub">Draft review assistant</div>
+      </div>
+    </div>
+    <div class="top-spacer"></div>
+    <span class="pill privacy" title="PDFs are parsed and analyzed in this browser tab. Nothing is uploaded."><i data-icon="shield"></i> On-device · nothing is uploaded</span>
+    <span id="hw-chip" class="pill"><span class="dot"></span>Checking GPU…</span>
+    <span id="engine-pill" class="pill"><span class="dot"></span>AI not loaded</span>
+    <button id="theme-btn" class="icon-btn" aria-label="Toggle dark mode" title="Toggle dark mode"></button>
+  </header>
+
+  <main class="layout">
+    <aside class="rail">
+      <section class="panel step" id="step-engine" aria-labelledby="h-engine">
+        <div class="step-head">
+          <span class="step-num">1</span>
+          <div><h2 id="h-engine">AI model</h2><p>Downloads once, then runs offline on your GPU</p></div>
+        </div>
+        <div id="engine-body"></div>
+      </section>
+
+      <section class="panel step" id="step-docs" aria-labelledby="h-docs">
+        <div class="step-head">
+          <span class="step-num">2</span>
+          <div><h2 id="h-docs">Documents</h2><p>IDs, phone numbers and emails are masked automatically</p></div>
+        </div>
+        <div class="slot" id="slot-iep" data-type="iep"></div>
+        <div class="slot" id="slot-psych" data-type="psych"></div>
+        <input type="file" id="file-iep" accept="application/pdf,.pdf" class="sr-only" tabindex="-1" aria-hidden="true" />
+        <input type="file" id="file-psych" accept="application/pdf,.pdf" class="sr-only" tabindex="-1" aria-hidden="true" />
+        <div id="meter" class="meter hidden"></div>
+      </section>
+
+      <section class="panel step" id="step-task" aria-labelledby="h-task">
+        <div class="step-head">
+          <span class="step-num">3</span>
+          <div><h2 id="h-task">What should Copilot do?</h2><p>Pick an action, then run it</p></div>
+        </div>
+        <div id="task-list" class="task-list" role="radiogroup" aria-labelledby="h-task"></div>
+        <button id="run-btn" class="btn primary lg"></button>
+      </section>
+
+      <p class="rail-foot">Copilot is a drafting aid. Small local models make mistakes, so check every change against the source IEP before you finalize anything in SEIS.</p>
+    </aside>
+
+    <section class="panel workspace" aria-label="Workspace">
+      <div class="ws-head">
+        <nav class="tabs" role="tablist">
+          <button class="tab active" role="tab" data-tab="output"><i data-icon="terminal"></i>Output</button>
+          <button class="tab" role="tab" data-tab="fixes"><i data-icon="list"></i><span><span class="lbl-long">Review </span>fixes</span><span id="fix-count" class="count">0</span></button>
+          <button class="tab" role="tab" data-tab="final"><i data-icon="file"></i><span><span class="lbl-long">Final </span>document</span></button>
+        </nav>
+        <div class="ws-actions" id="ws-actions"></div>
+      </div>
+
+      <div id="progress" class="progress hidden" role="status" aria-live="polite">
+        <span class="spinner"></span>
+        <div class="grow">
+          <div class="stage" id="prog-stage">Working…</div>
+          <div class="sub" id="prog-sub"></div>
+          <div class="indeterminate"></div>
+        </div>
+        <span class="time" id="prog-time">0:00</span>
+      </div>
+
+      <div class="ws-body">
+        <div id="view-output" class="view"><div class="scroll" id="output-scroll"></div></div>
+
+        <div id="view-fixes" class="view hidden">
+          <div class="toolbar" id="fix-toolbar"></div>
+          <div class="hint" id="fix-hint"><span><kbd>A</kbd> approve</span><span><kbd>R</kbd> reject</span><span><kbd>E</kbd> edit</span><span><kbd>↑</kbd><kbd>↓</kbd> move</span></div>
+          <div class="scroll"><div class="fix-list" id="fix-list"></div></div>
+        </div>
+
+        <div id="view-final" class="view hidden">
+          <div class="final-bar">
+            <div class="stats" id="final-stats"></div>
+            <div class="ws-actions">
+              <button class="btn sm ghost" id="reset-doc-btn"><i data-icon="refresh"></i>Reset</button>
+              <button class="btn sm" id="copy-doc-btn"><i data-icon="copy"></i>Copy all</button>
+              <button class="btn sm" id="txt-btn"><i data-icon="download"></i>.txt</button>
+              <button class="btn sm primary" id="word-btn"><i data-icon="download"></i>Export to Word</button>
+            </div>
+          </div>
+          <div class="doc-wrap">
+            <textarea id="final-doc" class="doc" spellcheck="true" placeholder="Upload a draft IEP to see its text here. Approved fixes are merged in when you click “Apply”." aria-label="Final document text"></textarea>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+<script>
+(() => {
+  "use strict";
+
+  /* ======================================================================
+     Constants
+     ====================================================================== */
+  const WEBLLM_URL = "https://esm.run/@mlc-ai/web-llm";
+  const PDF_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  const MAX_OUTPUT_TOKENS = 1500;
+  const PROMPT_OVERHEAD = 750;   // system prompt + task instructions + chat template
+  const CHARS_PER_TOKEN = 3.3;   // conservative for IEPs (numbers, abbreviations)
+
+  const MODELS = [
+    { id: "Qwen2.5-1.5B-Instruct-q4f32_1-MLC", name: "Light", detail: "Qwen 2.5 · 1.5B", note: "Laptops & low memory", size: "~1.1 GB", ctx: 12288 },
+    { id: "Llama-3.2-3B-Instruct-q4f32_1-MLC", name: "Balanced", detail: "Llama 3.2 · 3B", note: "Good for most computers", size: "~2.2 GB", ctx: 16384, recommended: true },
+    { id: "Llama-3.1-8B-Instruct-q4f32_1-MLC", name: "Max quality", detail: "Llama 3.1 · 8B", note: "Desktop GPU or Apple silicon", size: "~5.2 GB", ctx: 16384 },
+  ];
+
+  const TASKS = [
+    { id: "autofix", title: "Fix queue", desc: "Find errors and propose edits you approve", icon: "sparkles", chunkable: true },
+    { id: "proofread", title: "Consistency report", desc: "Names, dates, minutes, goal alignment", icon: "listcheck", chunkable: true },
+    { id: "audit", title: "Psych vs IEP audit", desc: "Cross-check scores and recommendations", icon: "columns", needsPsych: true },
+    { id: "goals", title: "Draft SMART goals", desc: "3 measurable goals from the PLAAFP", icon: "target" },
+    { id: "jargon", title: "Parent-friendly summary", desc: "Plain-language version of the findings", icon: "heart" },
+  ];
+
+  const ICONS = {
+    check: "M20 6 9 17l-5-5",
+    x: "M18 6 6 18M6 6l12 12",
+    shield: "M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z M9 12l2 2 4-4",
+    sparkles: "M12 3l1.9 4.6 4.6 1.9-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z",
+    listcheck: "M11 6h9M11 12h9M11 18h9 M3 6l1.5 1.5L7 5 M3 12l1.5 1.5L7 11 M3 18l1.5 1.5L7 17",
+    columns: "M4 4h7v16H4z M13 4h7v16h-7z",
+    target: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10z M12 11a1 1 0 1 0 0 2 1 1 0 0 0 0-2z",
+    heart: "M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z",
+    file: "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z M14 3v5h5 M9 13h6 M9 17h4",
+    upload: "M12 16V4 M7 9l5-5 5 5 M5 20h14",
+    download: "M12 4v12 M7 11l5 5 5-5 M5 20h14",
+    copy: "M9 9h11v11H9z M5 15H4V4h11v1",
+    edit: "M4 20h4L19 9l-4-4L4 16z M13.5 6.5l4 4",
+    play: "M7 5l12 7-12 7z",
+    stop: "M7 7h10v10H7z",
+    moon: "M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z",
+    sun: "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4",
+    bolt: "M13 2 4 14h7l-1 8 9-12h-7z",
+    alert: "M12 3 2 20h20z M12 10v4 M12 17h.01",
+    info: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M12 11v5 M12 8h.01",
+    trash: "M4 7h16 M9 7V4h6v3 M6 7l1 13h10l1-13",
+    refresh: "M20 11a8 8 0 1 0-2.3 5.7 M20 4v7h-7",
+    terminal: "M4 5h16v14H4z M8 10l2 2-2 2 M13 14h3",
+    list: "M8 6h12M8 12h12M8 18h12 M4 6h.01M4 12h.01M4 18h.01",
+    arrow: "M5 12h14 M13 6l6 6-6 6",
+    cpu: "M7 5h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z M9 9h6v6H9z M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3",
+    search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14z M20 20l-4-4",
+  };
+
+  /* ======================================================================
+     Helpers
+     ====================================================================== */
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const decodeEntities = (s) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'").replace(/&amp;/g, "&");
+  const icon = (n, cls = "") => `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[n] || ""}"/></svg>`;
+  const estTokens = (s) => Math.ceil((s || "").length / CHARS_PER_TOKEN);
+  const fmt = (n) => Number(n).toLocaleString();
+  const fmtTime = (ms) => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+  const fmtSize = (b) => (b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
+  const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+
+  /** Whitespace/quote-tolerant, case-insensitive matcher for locating a passage in the document. */
+  function flexRegex(text) {
+    const t = (text || "").trim();
+    if (!t) return null;
+    const src = escapeRe(t)
+      .replace(/\s+/g, "\\s+")
+      .replace(/['’‘]/g, "['’‘]")
+      .replace(/["“”]/g, '["“”]')
+      .replace(/[–—-]/g, "[–—-]");
+    try { return new RegExp(src, "i"); } catch { return null; }
+  }
+
+  /* ======================================================================
+     State
+     ====================================================================== */
+  const state = {
+    webgpu: null, lowSpec: false, hwCap: 16384,
+    model: lsGet("iep-model") || MODELS[1].id,
+    engine: null, loadedModel: null, loadedCtx: 0,
+    loading: false, loadProgress: 0, loadText: "", loadError: "",
+    docs: { iep: null, psych: null }, parsing: { iep: null, psych: null },
+    task: "autofix",
+    running: false, stopRequested: false, t0: 0, timer: null,
+    output: "", outputTask: null, outputMeta: null, outputWarnings: [],
+    fixes: [], filter: "all", focusIdx: -1,
+    finalDoc: null, finalDirty: false, applyStats: null,
+    tab: "output",
+  };
+  if (!MODELS.some((m) => m.id === state.model)) state.model = MODELS[1].id;
+
+  const modelById = (id) => MODELS.find((m) => m.id === id) || MODELS[1];
+  const effectiveCtx = (id) => Math.min(modelById(id).ctx, state.hwCap);
+  const currentCtx = () => (state.engine ? state.loadedCtx : effectiveCtx(state.model));
+  const tokenBudget = () => Math.max(1500, currentCtx() - MAX_OUTPUT_TOKENS - PROMPT_OVERHEAD);
+  const baseDoc = () => {
+    const d = state.docs.iep || state.docs.psych;
+    return d ? d.pages.map((p) => `── Page ${p.num} ──\n${p.text}`).join("\n\n") : "";
+  };
+  const llmBlock = (label, pages) =>
+    pages.map((p) => `=== START OF ${label} PAGE ${p.num} ===\n${p.text}\n=== END OF ${label} PAGE ${p.num} ===`).join("\n\n");
+
+  /* ======================================================================
+     Toasts
+     ====================================================================== */
+  function toast(msg, kind = "info", action) {
+    const host = $("#toasts");
+    const el = document.createElement("div");
+    el.className = `toast ${kind}`;
+    el.setAttribute("role", kind === "bad" ? "alert" : "status");
+    el.innerHTML = `${icon(kind === "ok" ? "check" : kind === "info" ? "info" : "alert")}<span>${esc(msg)}</span>${action ? `<button>${esc(action.label)}</button>` : ""}`;
+    const close = () => { el.classList.add("out"); setTimeout(() => el.remove(), 180); };
+    if (action) el.querySelector("button").onclick = () => { action.run(); close(); };
+    host.appendChild(el);
+    setTimeout(close, kind === "bad" ? 7000 : 4500);
+  }
+
+  /* ======================================================================
+     Hardware + WebLLM
+     ====================================================================== */
+  let webllmPromise = null;
+  const getWebLLM = () => (webllmPromise ||= import(WEBLLM_URL).catch((e) => { webllmPromise = null; throw e; }));
+
+  async function checkHardware() {
+    const chip = $("#hw-chip");
+    const set = (cls, txt, title = "") => { chip.className = `pill ${cls}`; chip.innerHTML = `<span class="dot"></span>${esc(txt)}`; chip.title = title; };
+    if (!("gpu" in navigator)) {
+      state.webgpu = false;
+      set("bad", "WebGPU unavailable", "Use a recent Chrome or Edge on desktop to run the local AI.");
+    } else {
+      try {
+        const adapter = await navigator.gpu.requestAdapter();
+        if (!adapter) throw new Error("No GPU adapter");
+        state.webgpu = true;
+        const ram = navigator.deviceMemory || 8;
+        const maxBufMB = Math.round((adapter.limits?.maxStorageBufferBindingSize || 0) / 1048576);
+        state.lowSpec = ram < 8 || (maxBufMB > 0 && maxBufMB < 1024);
+        state.hwCap = state.lowSpec ? 12288 : 16384;
+        if (state.lowSpec && !lsGet("iep-model")) state.model = MODELS[0].id;
+        set(state.lowSpec ? "warn" : "ok", state.lowSpec ? `Laptop mode · ${ram} GB+` : `WebGPU ready · ${ram} GB+`,
+          `Detected ~${ram} GB RAM (browsers cap this at 8). Context window: ${state.hwCap / 1024}k tokens.`);
+      } catch {
+        state.webgpu = false;
+        set("bad", "No compatible GPU", "WebGPU is present but no GPU adapter was available.");
+      }
+    }
+    renderEngine(); renderMeter(); renderRunBtn();
+    if (state.webgpu) refreshCacheBadges();
+  }
+
+  async function refreshCacheBadges() {
+    try {
+      const w = await getWebLLM();
+      if (typeof w.hasModelInCache !== "function") return;
+      for (const m of MODELS) m.cached = await w.hasModelInCache(m.id).catch(() => false);
+      if (!state.loading) renderEngine();
+    } catch { /* offline or blocked — badges are optional */ }
+  }
+
+  async function loadEngine() {
+    if (state.loading || state.running) return;
+    if (!state.webgpu) { toast("This browser can't run the local AI. Use a recent Chrome or Edge with WebGPU.", "bad"); return; }
+    const model = modelById(state.model);
+    const ctx = effectiveCtx(model.id);
+    state.loading = true; state.loadProgress = 0; state.loadText = "Starting…"; state.loadError = "";
+    renderEngine(); renderStatusPill(); renderRunBtn();
+    try {
+      const w = await getWebLLM();
+      if (state.engine) {
+        try { await state.engine.unload(); } catch {}
+        state.engine = null; state.loadedModel = null;
+      }
+      const engine = await w.CreateMLCEngine(
+        model.id,
+        { initProgressCallback: (r) => {
+            state.loadProgress = typeof r.progress === "number" ? r.progress : state.loadProgress;
+            state.loadText = r.text || "";
+            const bar = $("#load-bar"), txt = $("#load-text"), pct = $("#load-pct");
+            if (bar) bar.style.width = `${Math.round(state.loadProgress * 100)}%`;
+            if (txt) txt.textContent = state.loadText;
+            if (pct) pct.textContent = `${Math.round(state.loadProgress * 100)}%`;
+            renderStatusPill();
+          } },
+        { context_window_size: ctx }
+      );
+      state.engine = engine; state.loadedModel = model.id; state.loadedCtx = ctx; model.cached = true;
+      toast(`${model.name} model is ready`, "ok");
+    } catch (err) {
+      const msg = String(err?.message || err);
+      let hint = "";
+      if (/memory|OOM|allocat|device.*lost|exceeds/i.test(msg)) hint = " Your GPU ran out of memory — try the Light model.";
+      else if (/fetch|network|Failed to load|import/i.test(msg)) hint = " Check your internet connection (the model downloads once, then is cached).";
+      else if (/shader-f16|feature/i.test(msg)) hint = " Your GPU is missing a required feature — try another model.";
+      state.loadError = msg + hint;
+      toast("Couldn't load the AI model." + hint, "bad");
+    } finally {
+      state.loading = false;
+      renderEngine(); renderStatusPill(); renderMeter(); renderRunBtn(); renderOutputIfEmpty();
+    }
+  }
+
+  async function unloadEngine() {
+    if (!state.engine || state.running) return;
+    try { await state.engine.unload(); } catch {}
+    state.engine = null; state.loadedModel = null;
+    renderEngine(); renderStatusPill(); renderMeter(); renderRunBtn(); renderOutputIfEmpty();
+    toast("Model unloaded — GPU memory freed", "info");
+  }
+
+  /* ======================================================================
+     PDF parsing
+     ====================================================================== */
+  function scrubPII(text) {
+    return text
+      .replace(/\b\d{3}-\d{2}-\d{4}\b/g, "[SSN]")
+      .replace(/(?:\(\d{3}\)\s?|\b\d{3}[-.\s])\d{3}[-.\s]\d{4}\b/g, "[PHONE]")
+      .replace(/\b\d{6,10}\b/g, "[ID]")
+      .replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, "[EMAIL]");
+  }
+
+  async function parsePdf(file, onPage) {
+    if (!window.pdfjsLib) throw new Error("The PDF reader didn't load. Check your connection and refresh the page.");
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER;
+    const data = await file.arrayBuffer();
+    const pdf = await window.pdfjsLib.getDocument({ data }).promise;
+    const pages = [];
+    for (let i = 1; i <= pdf.numPages; i++) {
+      onPage?.(i, pdf.numPages);
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      let raw = "";
+      for (const it of content.items) {
+        if (typeof it.str !== "string") continue;
+        raw += it.str + (it.hasEOL ? "\n" : " ");
+      }
+      const text = scrubPII(raw)
+        .replace(/[._-]{4,}/g, " ")          // form-fill underlines / dot leaders
+        .replace(/[ \t ]+/g, " ")
+        .replace(/ *\n */g, "\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+      pages.push({ num: i, text });
+      page.cleanup?.();
+    }
+    pdf.destroy?.();
+    return pages;
+  }
+
+  async function handleFile(type, file) {
+    if (!file) return;
+    if (state.running) { toast("Wait for the current analysis to finish (or stop it) before changing documents.", "warn"); return; }
+    if (!/\.pdf$/i.test(file.name) && file.type !== "application/pdf") { toast("Please choose a PDF file.", "bad"); return; }
+    state.parsing[type] = { page: 0, total: 0 };
+    renderDoc(type);
+    try {
+      const pages = await parsePdf(file, (i, n) => {
+        state.parsing[type] = { page: i, total: n };
+        const el = $(`#parse-${type}`); if (el) el.textContent = `Reading page ${i} of ${n}…`;
+      });
+      const chars = pages.reduce((a, p) => a + p.text.length, 0);
+      const doc = { name: file.name, size: file.size, pages, chars, scanned: chars < pages.length * 40, tokens: estTokens(llmBlock("X", pages)) };
+      state.docs[type] = doc;
+
+      if (type === "iep" || !state.docs.iep) {
+        state.finalDoc = null; state.finalDirty = false; state.applyStats = null;
+      }
+      if (type === "iep") {
+        const hadAI = state.fixes.some((f) => f.source === "ai");
+        const scanFixes = runInstantScan(pages);
+        const base = baseDoc();
+        scanFixes.forEach((f) => (f.located = !!flexRegex(f.original)?.test(base)));
+        state.fixes = scanFixes;
+        state.filter = "all";
+        if (hadAI) toast("New IEP loaded — the previous fix queue was cleared.", "info");
+        if (scanFixes.length) {
+          toast(`Instant scan flagged ${scanFixes.length} possible name/pronoun issue${scanFixes.length > 1 ? "s" : ""}`, "warn", { label: "Review", run: () => setTab("fixes") });
+        }
+      }
+      if (doc.scanned) toast(`${file.name} has little or no selectable text — it may be a scanned image. Run it through OCR first for best results.`, "warn");
+    } catch (err) {
+      const msg = err?.name === "PasswordException" ? "This PDF is password-protected." : err?.message || String(err);
+      toast(`Couldn't read ${file.name}: ${msg}`, "bad");
+    } finally {
+      state.parsing[type] = null;
+      renderAll();
+    }
+  }
+
+  function removeDoc(type) {
+    if (state.running) return;
+    state.docs[type] = null;
+    if (type === "iep") { state.fixes = []; }
+    state.finalDoc = null; state.finalDirty = false; state.applyStats = null;
+    renderAll();
+  }
+
+  /* ======================================================================
+     Instant (deterministic) name & pronoun scanner
+     ====================================================================== */
+  const STOP_WORDS = new Set((
+    "The This That These Those There Here Then When Where What Which Who Whom Why How Given With From Into During After Before Based Upon " +
+    "He She They Them His Her Hers Their Theirs Him It Its We Our You Your Mom Mother Dad Father Parent Parents Guardian Guardians Family " +
+    "Student Students Staff Peers Classmates Teacher Teachers Everyone Each Every All Some Most Many Both Overall Also Additionally However Therefore " +
+    "Present Levels Annual Goal Goals Objective Objectives Benchmark Page Start End March April May June July August September October November December January February " +
+    "Monday Tuesday Wednesday Thursday Friday Saturday Sunday English Math Reading Writing Spelling Science History Art Music Speech Language Special Education " +
+    "Services Service Accommodations Modifications District School Individualized Program Assessment Assessments Evaluation Standard Score Scores Percentile Grade Date Birth " +
+    "Psychologist Current Baseline Mastery Criteria Progress Report Quarterly Minutes Weekly Daily Monthly Yearly General Setting Classroom Support Supports " +
+    "Behavior Social Emotional Motor Woodcock Johnson Wechsler BASC Vineland WISC WIAT KTEA CELF IEP PLAAFP IDEA FAPE LRE SDC RSP SLP California United States " +
+    "County Unified Attention Memory Processing Comprehension Fluency Calculation Reasoning Verbal Visual Auditory Executive Functioning Adaptive Academic Functional " +
+    "Performance Strengths Needs Transition Postsecondary Independent Living Employment Training Eligibility Autism Other Health Impairment Specific Learning " +
+    "Disability Disturbance Intellectual Section Table Chart Summary Appendix Notes Comments Signature Team Meeting Review Triennial Initial Amendment Addendum " +
+    "Yes None Not Applicable True False High Low Average Case Manager Aide Para Counselor Nurse Principal Administrator Observation Observations Testing Results " +
+    "Data Areas Area Plan Kindergarten First Second Third Fourth Fifth Sixth Seventh Eighth Ninth Tenth Eleventh Twelfth Coach Mrs Miss Spanish Physical " +
+    "Jan Feb Mar Apr Jun Jul Aug Sep Sept Oct Nov Dec Mon Tue Tues Wed Thu Thur Thurs Fri Sat Sun Today Tomorrow Yesterday Fall Spring Winter Summer Semester Trimester Quarter Year Years Week Weeks Day Days Month Months Hour Hours Time Dates Annually Type Types Interpreter Interpreters Translator Translation Needed Required Requested Provided Received Signed Copy Copies Language Languages Primary Secondary Native Ethnicity Gender Male Female Age Address Phone City State Zip Location Frequency Duration Begin Ending Initiation Projected Domain Category Level Levels Placement Percentage Percent Total Unit Units Session Sessions Individual Pull Push Collaborative Consultation Direct Indirect Hearing Vision Dyslexia ADHD Specialist Coordinator Director Advocate Representative Member Members Attendees Participants Name Names Position Title Role Initials Rationale Description Justification Explanation Options Considered Rejected Accepted Factors Considerations Assistive Technology Device Devices Braille Communication Mode Statewide Alternate Curriculum Standards Common Core Reported Card Cards Prior Previous Next Last New Updated Revised Draft Final Agree Disagree Consent Present Absent Attended Attending Excused Waived Provider Providers Agency Office Department Enrollment Enrolled Address Email Parents " +
+    "Homework Classwork Instruction Directions Assignments Materials Breaks Seating Preferential Extended Visuals Prompts Feedback Practice Interventions Intervention Strategies Tools Checklists Manipulatives Calculators Breaks Snack Transportation Attendance Behaviors Grades Writing Spelling Phonics Vocabulary Handwriting Typing Keyboarding Brother Sister Sibling Peer Friend Cousin Aunt Uncle Grandma Grandpa " +
+    "Lexia Dibels Seesaw Zoom Google Microsoft Wilson Orton Gillingham Fountas Pinnell Newsela Khan Raz Brainpop Prodigy Freckle Wonders Bridges Eureka Edmark Barton Spire Acadience Aimsweb Easycbm Renaissance Accelerated Ixl Dreambox Boardmaker Proloquo Elementary Middle Academy Charter " +
+    "Occupational Therapy Therapist Recess Lunch Group Small Whole Class Room Home Work Test Tests Task Tasks Note Total Raw Composite Index Scale Subtest"
+  ).split(/\s+/));
+
+  const NAME_VERBS = "will|would|can|could|is|was|has|had|does|did|demonstrates|demonstrated|struggles|struggled|requires|required|needs|needed|scored|scores|achieved|achieves|" +
+    "participates|participated|shows|showed|completed|completes|benefits|benefited|reads|writes|wrote|uses|used|works|worked|enjoys|enjoyed|attends|attended|receives|received|" +
+    "continues|continued|exhibits|exhibited|displays|displayed|performs|performed|responds|responded|follows|followed|identifies|identified|currently|independently|appears|" +
+    "likes|prefers|tends|seems|met|answered|solved|solves|added|adds|counts|counted|wants|transitions|transitioned|engages|engaged|interacts|interacted|became|remains";
+  const SUBJ_RE = new RegExp(`\\b([A-Z][a-z]{2,14})\\s+(?:${NAME_VERBS})\\b`, "g");
+  const POSS_RE = /\b([A-Z][a-z]{2,14})['’]s\b/g;
+  const TITLE_BEFORE = /\b(?:Mr|Mrs|Ms|Mx|Dr|Miss|Coach)\.?\s*$/;
+  const isNonName = (w) => STOP_WORDS.has(w) || (w.length >= 6 && /(ly|tion|sion|ment|ness|ity|able|ible|ous|ive|ing|ed|ence|ance|ful|less)$/i.test(w));
+  const countWord = (text, w) => (text.match(new RegExp(`\\b${escapeRe(w)}\\b`, "g")) || []).length;
+  const sentencesOf = (text) => text.split(/(?<=[.!?])(?<!\b(?:Mr|Mrs|Ms|Mx|Dr|St|Jr|Sr|vs|etc|approx|e\.g|i\.e)\.)\s+|\n{2,}/).map((s) => s.replace(/\s+/g, " ").trim()).filter((s) => s.length > 3);
+
+  /** Trim a long sentence/table row to a readable window around [start, end). */
+  function clipAround(s, start, end, pad = 140) {
+    if (s.length <= end - start + pad * 2 + 40) return s;
+    let a = Math.max(0, start - pad), b = Math.min(s.length, end + pad);
+    if (a > 0) { const sp = s.indexOf(" ", a); if (sp !== -1 && sp < start) a = sp + 1; }
+    if (b < s.length) { const sp = s.lastIndexOf(" ", b); if (sp > end) b = sp; }
+    return s.slice(a, b).trim();
+  }
+
+  function runInstantScan(pages) {
+    const fixes = [];
+    const full = pages.map((p) => p.text).join("\n");
+
+    // ---- 1. Name mismatches (copy-paste from another student's IEP) ----
+    // Find the student's name, then flag any other capitalized name-like word that
+    // (a) is rare, (b) is never written in lowercase elsewhere (so it's not an ordinary word), and
+    // (c) sits where the student's name normally sits: before a verb, as a possessive,
+    //     or next to the same words that surround the real name ("for Kyra", "remind Kyra").
+    const fullLower = full.toLowerCase();
+    const countCI = (w) => (full.match(new RegExp(`\\b${escapeRe(w)}\\b`, "gi")) || []).length;
+    const appearsLowercase = (w) => new RegExp(`\\b${escapeRe(w.toLowerCase())}\\b`).test(full);
+    const sents = pages.flatMap((p) => sentencesOf(p.text).map((s) => ({
+      page: p.num, s,
+      words: [...s.matchAll(/[A-Za-z][A-Za-z]*(?:['’][A-Za-z]+)?/g)].map((m) => {
+        const poss = /['’]s$/i.test(m[0]);
+        return { w: poss ? m[0].slice(0, -2) : m[0], poss, i: m.index, end: m.index + m[0].length };
+      }),
+    })));
+
+    let primary = "", lastName = "";
+    const header = full.match(/\b(?:[Ss]tudent|STUDENT|[Pp]upil|PUPIL|[Cc]hild)(?:['’]s)?\s*(?:[Nn]ame|NAME)?\s*[:\-–]\s*([A-Z][a-zA-Z'’-]{1,20})(?:\s*,\s*([A-Z][a-zA-Z]{1,14})|\s+([A-Z][a-zA-Z'’-]{1,20}))?/);
+    if (header) {
+      const first = header[2] || header[1];           // "Last, First" vs "First Last"
+      const last = header[2] ? header[1] : header[3] || "";
+      const norm = (x) => x.charAt(0).toUpperCase() + x.slice(1).toLowerCase();
+      if (!isNonName(norm(first)) && countCI(first) >= 2) { primary = norm(first); lastName = last; }
+    }
+    if (!primary) {
+      const refs = {};
+      for (const { s } of sents) for (const re of [SUBJ_RE, POSS_RE]) {
+        re.lastIndex = 0; let m;
+        while ((m = re.exec(s))) if (!isNonName(m[1]) && !TITLE_BEFORE.test(s.slice(0, m.index)) && !appearsLowercase(m[1])) refs[m[1]] = (refs[m[1]] || 0) + 1;
+      }
+      const top = Object.entries(refs).sort((a, b) => b[1] - a[1])[0];
+      if (top && top[1] >= 3) primary = top[0];
+    }
+
+    const primaryCount = primary ? countCI(primary) : 0;
+    if (primary && primaryCount >= 4) {
+      const pl = primary.toLowerCase();
+      const VERB_SET = new Set(NAME_VERBS.split("|"));
+      const NAME_PREV = new Set(("for with to remind reminds reminded prompt prompts prompted cue cues support supports assist assists help helps helped " +
+        "encourage encourages allow allows give gives gave teach teaches ask asks asked tell tells told praise praises redirect redirects provide provides " +
+        "offer offers show shows let lets when if that because while whether until unless").split(" "));
+      const RELATION_PREV = new Set("brother sister sibling twin mom mother dad father parent guardian peer peers classmate friend cousin aunt uncle grandma grandpa grandmother grandfather stepmother stepfather teacher aide para therapist counselor".split(" "));
+
+      // Typos where the name is glued to the next word: "Rykerwill", "Kyrawill", "Ryker'sreading"
+      const GLUE = ["independently", "demonstrated", "demonstrates", "participated", "participates", "struggled", "struggles", "completed",
+        "continues", "currently", "requires", "required", "benefits", "receives", "received", "exhibits", "should", "would", "could",
+        "scored", "writes", "enjoys", "needs", "reads", "will", "was", "has"];
+      const GLUE_PRIMARY = new Set([...GLUE, ...VERB_SET, "is", "and", "to", "the", "can", "with", "in", "on", "at", "also", "had", "did", "does", "made", "read", "met", "for"]);
+      const BAD_PREFIX = /^(?:dis|un|re|pre|over|under|out|mis|non|sub|inter|co|de|ex|good|for|with|up|down|any|some|every|no|be)$/i;
+      const splitGlued = (tok) => {
+        const m = tok.match(/^([A-Z][a-z]{2,14})['’]s([a-z]{3,})$/);
+        if (m) return { name: m[1], rest: m[2], poss: true };
+        if (!/^[A-Z][a-z]{4,}$/.test(tok)) return null;
+        const low = tok.toLowerCase();
+        if (low.startsWith(pl) && GLUE_PRIMARY.has(low.slice(pl.length))) return { name: primary, rest: low.slice(pl.length), poss: false };
+        for (const g of GLUE) if (low.length - g.length >= 3 && low.endsWith(g)) return { name: tok.slice(0, tok.length - g.length), rest: g, poss: false };
+        return null;
+      };
+      const rareEnough = (w) => { const raw = countCI(w); return raw <= Math.max(3, Math.floor(primaryCount / 4)) && raw * 3 <= primaryCount; };
+
+      const byKey = new Map();
+      const addRep = (page, s, t, rep) => {
+        const snippet = clipAround(s, t.i, t.end);
+        const key = `${page}|${snippet}`;
+        const entry = byKey.get(key) || { page, snippet, reps: [] };
+        if (!entry.reps.some((r) => r.from === rep.from)) entry.reps.push(rep);
+        byKey.set(key, entry);
+      };
+
+      for (const { page, s, words } of sents) {
+        words.forEach((t, k) => {
+          const prev = k > 0 ? words[k - 1].w.toLowerCase() : "";
+          const titled = TITLE_BEFORE.test(s.slice(0, t.i));
+
+          // (a) glued typo
+          const tok = s.slice(t.i, t.end);
+          const g = splitGlued(tok);
+          if (g && !appearsLowercase(tok)) {
+            const isPrimary = g.name.toLowerCase() === pl;
+            const ok = isPrimary || (
+              /^[A-Z][a-z]{2,14}$/.test(g.name) && !BAD_PREFIX.test(g.name) && !isNonName(g.name) && !appearsLowercase(g.name) &&
+              g.name.toLowerCase() !== lastName.toLowerCase() && !titled && !RELATION_PREV.has(prev) && rareEnough(g.name));
+            if (ok) {
+              addRep(page, s, t, { kind: isPrimary ? "space" : "glued", name: g.name, from: tok, to: `${primary}${g.poss ? "'s" : ""} ${g.rest}`, raw: countCI(g.name) });
+              return;
+            }
+          }
+
+          // (b) a different name in the student's usual position
+          const w = t.w;
+          if (!/^[A-Z][a-z]{2,14}$/.test(w) || w === primary || w.toLowerCase() === lastName.toLowerCase()) return;
+          if (isNonName(w) || appearsLowercase(w)) return;            // ordinary words show up in lowercase somewhere
+          if (titled) return;                                          // Mrs. Garcia, Dr. Lee
+          // Form labels: names in IEP prose sit between lowercase words; labels are Title Case runs
+          const after = s.slice(t.end, t.end + 12);
+          if (/^\s*[:#]/.test(after) || /^\s*\d/.test(after)) return;  // "Interpreter:", "Nov 12", "Type 2"
+          const pTok = k > 0 ? words[k - 1] : null, nTok = k < words.length - 1 ? words[k + 1] : null;
+          const capital = (x) => x && /^[A-Z]/.test(x.w);
+          if (capital(nTok) && /^\s+$/.test(s.slice(t.end, nTok.i))) return;      // "Interpreter Needed", "Copy Received"
+          if (capital(pTok) && /^\s+$/.test(s.slice(pTok.end, t.i))) return;      // "Disability Type", "Next Annual"
+          if (words.length >= 4 && words.filter(capital).length / words.length > 0.5) return; // mostly-capitalized form row
+          if (prev === pl) return;                                     // "Kyra Smith" — a last name
+          if (RELATION_PREV.has(prev)) return;                         // "her brother Liam", "peer Ava" — someone else
+          if (!rareEnough(w)) return;
+          const next = nTok ? nTok.w.toLowerCase() : "";
+          const nextVerbish = !t.poss && nTok && /^[a-z]{3,}(?:s|ed)$/.test(nTok.w); // "Ryker decodes", "Ryker struggled"
+          // A capitalized verb at the start of a sentence ("Discontinues services", "Provides breaks") is not a name
+          const verbLikeOpener = k === 0 && /(?:es|ed|ing)$/.test(w) && !VERB_SET.has(next) && !NAME_PREV.has(prev);
+          if (!(t.poss || VERB_SET.has(next) || (nextVerbish && !verbLikeOpener) || NAME_PREV.has(prev))) return;
+          addRep(page, s, t, { kind: "name", name: w, from: w, to: primary, raw: countCI(w) });
+        });
+      }
+
+      for (const e of byKey.values()) {
+        let replacement = e.snippet;
+        for (const r of e.reps) {
+          const re = r.kind === "name" ? new RegExp(`\\b${escapeRe(r.from)}\\b`, "g") : new RegExp(escapeRe(r.from), "g");
+          replacement = replacement.replace(re, () => r.to);
+        }
+        const wrong = e.reps.filter((r) => r.kind !== "space");
+        const wrongNames = [...new Set(wrong.map((r) => r.name))];
+        const issue = wrong.length
+          ? `Possible name from another student — “${wrongNames.join("”, “")}” in an IEP for “${primary}”`
+          : `Missing space after the student's name — “${e.reps.map((r) => r.from).join("”, “")}”`;
+        const notes = [];
+        for (const r of e.reps) {
+          if (r.kind === "glued") notes.push(`“${r.from}” looks like “${r.name}” with a missing space, and “${r.name}” isn't this student.`);
+          else if (r.kind === "name") notes.push(`“${r.name}” appears ${r.raw}× vs “${primary}” ${primaryCount}×.`);
+          else notes.push(`“${r.from}” should be two words.`);
+        }
+        fixes.push({ source: "scan", page: `Page ${e.page}`, issue, note: notes.join(" "), original: e.snippet, replacement });
+      }
+    }
+
+    // ---- 2. Stray pronouns ----
+    // Decide the student's pronouns: the form's Gender/Sex field if present, otherwise the pronouns used
+    // in sentences about the student (sentences naming them, or right after one). Then flag the odd ones out.
+    const FEM_REF = /\b(?:mother|mom|grandmother|grandma|sister|aunt|stepmother|daughter|girl|girls|woman|she's)\b|\b(?:Mrs|Ms|Miss)\b/i;
+    const MALE_REF = /\b(?:father|dad|grandfather|grandpa|brother|uncle|stepfather|son|boy|boys|man|he's)\b|\b(?:Mr)\b/i;
+    const MALE = /\b(he|him|his|himself)\b/gi, FEMALE = /\b(she|her|hers|herself)\b/gi;
+    const nameRe = primary ? new RegExp(`\\b${escapeRe(primary)}\\b`, "i") : null;
+    const studentSents = [];
+    for (const p of pages) {
+      let prevNamed = false;
+      for (const s of sentencesOf(p.text)) {
+        const named = !!nameRe?.test(s);
+        if (!FEM_REF.test(s) && !MALE_REF.test(s) && (!nameRe || named || prevNamed)) studentSents.push({ page: p.num, s, named });
+        prevNamed = named;
+      }
+    }
+    const genderField = (full.match(/\b(?:Gender|Sex)\s*[:\-]?\s*(Female|Male|F|M)\b/) || [])[1];
+    const fieldMale = genderField ? /^m/i.test(genderField) : null;
+    let male = 0, female = 0;
+    for (const { s } of studentSents) { male += (s.match(MALE) || []).length; female += (s.match(FEMALE) || []).length; }
+    let studentIsMale = null, basis = "";
+    if (fieldMale !== null) { studentIsMale = fieldMale; basis = `the form lists the student as ${fieldMale ? "male" : "female"}`; }
+    else if (male >= 2 && female >= 1 && female * 2 <= male) { studentIsMale = true; basis = `“he/him” is used ${male}× and “she/her” ${female}× for the student`; }
+    else if (female >= 2 && male >= 1 && male * 2 <= female) { studentIsMale = false; basis = `“she/her” is used ${female}× and “he/him” ${male}× for the student`; }
+    if (studentIsMale !== null) {
+      const stray = studentIsMale ? FEMALE : MALE;
+      const seen = new Set();
+      for (const { page, s } of studentSents) {
+        stray.lastIndex = 0;
+        const pm = stray.exec(s);
+        if (!pm || seen.has(s)) continue;
+        seen.add(s);
+        const snippet = clipAround(s, pm.index, pm.index + pm[0].length);
+        fixes.push({
+          source: "scan", page: `Page ${page}`,
+          issue: studentIsMale ? "Stray “she/her” for a student referred to as “he/him”" : "Stray “he/him” for a student referred to as “she/her”",
+          note: `Flagged because ${basis}. Check who this pronoun refers to before approving.`,
+          original: snippet,
+          replacement: swapPronouns(snippet, studentIsMale),
+        });
+      }
+    }
+
+    return fixes.map((f, i) => ({ ...f, id: `scan-${i}`, status: "pending", located: true }));
+  }
+
+  const OBJ_FOLLOW = new Set("to with and or but in on at for by from that when if as about a an the this these those how what during after before until up down out off back again independently directly individually one two three some more extra while because so into through across over under is was will can".split(" "));
+  const CAUSATIVE = new Set("help helps helped let lets make makes made watch watched see saw hear heard".split(" "));
+  const matchCase = (orig, rep) => (orig === orig.toUpperCase() && orig.length > 1 ? rep.toUpperCase() : orig[0] === orig[0].toUpperCase() ? rep[0].toUpperCase() + rep.slice(1) : rep);
+
+  /** Swap pronouns in a sentence. toMale=true: she/her → he/him/his. Handles object vs possessive "her". */
+  function swapPronouns(sentence, toMale) {
+    const re = toMale ? /\b(she|her|hers|herself)\b/gi : /\b(he|him|his|himself)\b/gi;
+    return sentence.replace(re, (w, _g, offset, str) => {
+      const lw = w.toLowerCase();
+      const after = str.slice(offset + w.length);
+      const nextWord = (after.match(/^\s+([A-Za-z]+)/) || [])[1]?.toLowerCase();
+      const endsHere = !nextWord || /^\s*[^\sA-Za-z]/.test(after);
+      const prevWord = (str.slice(0, offset).match(/([A-Za-z]+)\s*$/) || [])[1]?.toLowerCase();
+      let rep;
+      if (toMale) {
+        if (lw === "she") rep = "he";
+        else if (lw === "hers") rep = "his";
+        else if (lw === "herself") rep = "himself";
+        else rep = endsHere || OBJ_FOLLOW.has(nextWord) || CAUSATIVE.has(prevWord) ? "him" : "his";
+      } else {
+        if (lw === "he") rep = "she";
+        else if (lw === "him") rep = "her";
+        else if (lw === "himself") rep = "herself";
+        else rep = endsHere ? "hers" : "her";
+      }
+      return matchCase(w, rep);
+    });
+  }
+
+  /* ======================================================================
+     Prompts
+     ====================================================================== */
+  const SYSTEM_PROMPT =
+    `You are a meticulous special-education IEP proofreader and compliance reviewer. ` +
+    `You only report problems you can actually see in the document text provided. Never invent student names, scores, dates, services or page numbers. ` +
+    `Each page is wrapped in markers like "=== START OF IEP PAGE 3 ===". When you cite a page, use the real page number from those markers (e.g. "Page 3"); never write "[page number]".`;
+
+  const EXAMPLE_ORIGINAL = "Jordan will read 90 words per minute with 95% accuracy by May.";
+  const TASK_PROMPTS = {
+    autofix: `TASK: Find concrete errors in the document above that should be corrected:
+- a wrong student name (for example, a name left over from another student's IEP)
+- wrong or inconsistent pronouns for the student
+- baseline scores, dates, grade levels or service minutes that contradict each other
+- goals with vague or unmeasurable criteria
+- typos, especially missing spaces (for example "Jordanwill" instead of "Jordan will")
+
+For each problem, output one block in exactly this XML format:
+
+<fix>
+<page>Page 2</page>
+<issue>Wrong student name in reading goal</issue>
+<original>${EXAMPLE_ORIGINAL}</original>
+<replacement>Maya will read 90 words per minute with 95% accuracy by May.</replacement>
+</fix>
+
+Rules:
+- <original> must be copied character-for-character from the document: one sentence, no more than about 40 words, so it can be found and replaced automatically.
+- <replacement> is the same sentence with only the error corrected.
+- Report at most 6 fixes, most important first. Only report real problems. If you find none, output <none/>.
+- Do not use markdown. Do not write anything outside the tags. The example above is not from this document.`,
+
+    proofread: `TASK: Write a proofreading and internal-consistency report for the IEP above. Check:
+1. Name & pronouns: is the student's name and pronoun use consistent on every page?
+2. Internal contradictions: dates, age/grade, eligibility category, service minutes or frequency, or placement percentages that disagree between pages.
+3. PLAAFP to goal alignment: does every area of need in Present Levels have a matching annual goal with a numeric baseline and measurable mastery criteria?
+4. Other: missing required elements, typos, unclear wording.
+
+Format as Markdown. Use a "## " heading for each of the 4 sections. Under each, write bullet points that begin with the page in bold, e.g. "**Page 3**: ...". If a section has no problems, write "No issues found." Finish with "## Top priorities" listing the 3 most important corrections.`,
+
+    audit: `TASK: Audit the Draft IEP against the Psych Evaluation (if only one document is provided, audit it on its own). Report:
+1. Name, pronoun, age/date-of-birth and grade mismatches between the documents.
+2. Test scores (standard scores, percentiles, descriptors) quoted in the IEP that differ from the evaluation.
+3. Recommendations or accommodations in the evaluation that are missing from the IEP.
+4. Eligibility or area-of-need statements not supported by the evaluation data.
+
+Format as Markdown with a "## " heading for each category. Each bullet should cite both sources, e.g. "**IEP p.4 vs Eval p.7**: ...". Write "No discrepancies found." where that is true. Only report what the text actually shows.`,
+
+    goals: `TASK: Using the Present Levels (PLAAFP) and any evaluation data above, draft 3 measurable annual IEP goals for the student's highest-priority areas of need. Use this structure for each:
+
+## Goal N: <area>
+**Baseline:** the current level, quoted from the document, with page number
+**Goal:** By <timeframe>, when given <condition>, <student> will <observable behavior> with <criteria> as measured by <method>.
+**Short-term objectives:**
+- interim benchmark 1
+- interim benchmark 2
+**Why this goal:** one sentence linking it to the PLAAFP
+
+Use only data that appears in the document. If a baseline is missing, write "Baseline needed" instead of inventing one.`,
+
+    jargon: `TASK: Rewrite the key findings for the student's parents or guardians in warm, plain language (about an 8th-grade reading level).
+- Start with the student's strengths.
+- Explain each area of need and what the scores mean in everyday terms (for example: "a standard score of 85 is in the low-average range, about the 16th percentile").
+- Explain which services and supports the school is proposing and how often.
+- Spell out each acronym the first time it appears (IEP, PLAAFP, SLP, and so on).
+- End with 2 or 3 questions the family might want to ask at the meeting.
+
+Format as Markdown with short "## " headings and short paragraphs. Do not add facts that are not in the document.`,
+  };
+
+  const GEN_PARAMS = {
+    precise: { temperature: 0.1, top_p: 0.9, repetition_penalty: 1.0, frequency_penalty: 0 },
+    writing: { temperature: 0.4, top_p: 0.9, repetition_penalty: 1.05, frequency_penalty: 0.15 },
+  };
+
+  /* ======================================================================
+     Context planning (prevents context-window overflow)
+     ====================================================================== */
+  function buildPlan(taskId) {
+    const task = TASKS.find((t) => t.id === taskId);
+    const budget = tokenBudget();
+    const iep = state.docs.iep, psych = state.docs.psych;
+    const warnings = [];
+    const wrap = (iepPages, psychPages) => {
+      const both = iepPages?.length && psychPages?.length;
+      let s = "";
+      if (iepPages?.length) s += `${both ? "PRIMARY DOCUMENT: DRAFT IEP" : "DRAFT IEP"}\n\n${llmBlock("IEP", iepPages)}`;
+      if (psychPages?.length) s += `${s ? "\n\n" : ""}${both ? "SUPPORTING DOCUMENT: PSYCH EVALUATION" : "PSYCH EVALUATION"}\n\n${llmBlock("PSYCH EVAL", psychPages)}`;
+      return s;
+    };
+    const pageTokens = (label, p) => estTokens(llmBlock(label, [p])) + 4;
+    const truncatePage = (label, p, limit) => {
+      if (pageTokens(label, p) <= limit) return p;
+      return { ...p, text: p.text.slice(0, Math.max(200, Math.floor((limit - 40) * CHARS_PER_TOKEN))) + " […page truncated…]" };
+    };
+
+    const full = wrap(iep?.pages, psych?.pages);
+    if (estTokens(full) <= budget) return { chunks: [{ label: "", content: full }], warnings };
+
+    // Long document + chunkable task → review IEP in sections
+    if (task.chunkable && iep) {
+      const limit = budget - 40;
+      const groups = [];
+      let cur = [], used = 0;
+      for (const p0 of iep.pages) {
+        const p = truncatePage("IEP", p0, limit);
+        const t = pageTokens("IEP", p);
+        if (cur.length && used + t > limit) { groups.push(cur); cur = []; used = 0; }
+        cur.push(p); used += t;
+      }
+      if (cur.length) groups.push(cur);
+      if (groups.length > 1) warnings.push(`This IEP is longer than the model can read at once, so it is reviewed in ${groups.length} sections.`);
+      if (psych) warnings.push("The psych evaluation was left out of this run to make room. Use “Psych vs IEP audit” to compare the two.");
+      if (iep.pages.some((p) => truncatePage("IEP", p, limit) !== p)) warnings.push("At least one very long page was shortened.");
+      return {
+        chunks: groups.map((g) => ({ label: g.length === 1 ? `page ${g[0].num}` : `pages ${g[0].num}–${g[g.length - 1].num}`, content: wrap(g, null) })),
+        warnings,
+      };
+    }
+
+    // Otherwise trim to fit (IEP gets 60% when both are present)
+    const take = (label, pages, limit) => {
+      const kept = []; let used = 0;
+      for (const p of pages) {
+        const t = pageTokens(label, p);
+        if (used + t > limit) break;
+        kept.push(p); used += t;
+      }
+      if (!kept.length && pages.length) kept.push(truncatePage(label, pages[0], limit));
+      return kept;
+    };
+    const iepKept = iep ? take("IEP", iep.pages, psych ? Math.floor(budget * 0.6) : budget) : [];
+    const usedIep = iepKept.length ? estTokens(wrap(iepKept, null)) : 0;
+    const psychKept = psych ? take("PSYCH EVAL", psych.pages, budget - usedIep - 30) : [];
+    if (iep && iepKept.length < iep.pages.length) warnings.push(`Only IEP pages 1–${iepKept[iepKept.length - 1]?.num ?? 1} fit in the model's memory; later pages were not read.`);
+    if (psych && psychKept.length < psych.pages.length) warnings.push(`Only psych evaluation pages 1–${psychKept[psychKept.length - 1]?.num ?? 1} fit; later pages were not read.`);
+    return { chunks: [{ label: "", content: wrap(iepKept, psychKept) }], warnings };
+  }
+
+  /* ======================================================================
+     AI output parsing
+     ====================================================================== */
+  function cleanField(s) {
+    return decodeEntities(String(s || ""))
+      .replace(/===[^=\n]*===/g, " ")
+      .replace(/^\s*\*\*|\*\*\s*$/g, "")
+      .replace(/^\s*["“'‘]+|["”'’]+\s*$/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  const normPage = (p) => { const t = cleanField(p); if (!t) return "Page ?"; return /^\d+$/.test(t) ? `Page ${t}` : t.replace(/^page/i, "Page"); };
+
+  function parseFixesFromOutput(raw) {
+    const out = [];
+    const blocks = raw.match(/<fix>[\s\S]*?<\/fix>/gi) || [];
+    const tag = (b, t) => (b.match(new RegExp(`<${t}>([\\s\\S]*?)</${t}>`, "i")) || [])[1];
+    for (const b of blocks) out.push({ page: tag(b, "page"), issue: tag(b, "issue"), original: tag(b, "original"), replacement: tag(b, "replacement") });
+
+    if (!blocks.length) {
+      // Fallback for models that drift into "PAGE: … ISSUE: …" markdown
+      const F = "(?:\\*\\*)?\\s*(?:page|issue|original|replacement)\\s*(?:\\*\\*)?\\s*:";
+      const segs = raw.split(/\n(?=\s*(?:[-*]\s*)?(?:\*\*)?\s*page\s*(?:\*\*)?\s*:)/i);
+      for (const seg of segs) {
+        const get = (name) => (seg.match(new RegExp(`(?:\\*\\*)?\\s*${name}\\s*(?:\\*\\*)?\\s*:\\s*([\\s\\S]*?)(?=\\n\\s*(?:[-*]\\s*)?${F}|$)`, "i")) || [])[1];
+        out.push({ page: get("page"), issue: get("issue"), original: get("original"), replacement: get("replacement") });
+      }
+    }
+
+    const doc = baseDoc();
+    return out
+      .map((f) => ({ page: normPage(f.page), issue: cleanField(f.issue) || "Suggested correction", original: cleanField(f.original), replacement: cleanField(f.replacement) }))
+      .filter((f) => f.original && f.replacement && f.original !== f.replacement && f.original !== EXAMPLE_ORIGINAL && !/copied character|exact sentence/i.test(f.original))
+      .map((f) => ({ ...f, source: "ai", status: "pending", located: !!flexRegex(f.original)?.test(doc) }));
+  }
+
+  /* ======================================================================
+     Run analysis
+     ====================================================================== */
+  async function runAnalysis() {
+    if (state.running) return;
+    if (!state.engine) {
+      toast(state.loading ? "The model is still loading…" : "Load the AI model first (step 1).", "warn");
+      $("#step-engine").scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    if (!state.docs.iep && !state.docs.psych) { toast("Upload a draft IEP first (step 2).", "warn"); return; }
+
+    const taskId = state.task;
+    const task = TASKS.find((t) => t.id === taskId);
+    const plan = buildPlan(taskId);
+    const params = taskId === "autofix" ? GEN_PARAMS.precise : GEN_PARAMS.writing;
+
+    state.running = true; state.stopRequested = false;
+    state.output = ""; state.outputTask = taskId; state.outputWarnings = plan.warnings;
+    state.outputMeta = { title: task.title, model: modelById(state.loadedModel).detail, sections: plan.chunks.length };
+    setTab("output");
+    renderRunBtn(); renderOutput(); renderDocs(); renderTasks();
+    startProgress(plan.chunks.length > 1 ? `Section 1 of ${plan.chunks.length}` : "Reading the document…", "Loading text into GPU memory — usually 10–40 s before words appear");
+
+    const aiFixes = [];
+    let errorMsg = "";
+    try {
+      for (let i = 0; i < plan.chunks.length; i++) {
+        if (state.stopRequested) break;
+        const chunk = plan.chunks[i];
+        const multi = plan.chunks.length > 1;
+        setProgress(multi ? `Section ${i + 1} of ${plan.chunks.length} · ${chunk.label}` : "Reading the document…", "Loading text into GPU memory — usually 10–40 s before words appear");
+        if (multi) state.output += `${i ? "\n\n" : ""}### Section ${i + 1} of ${plan.chunks.length} (${chunk.label})\n\n`;
+
+        await state.engine.resetChat();
+        const stream = await state.engine.chat.completions.create({
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: `${chunk.content}\n\n---\n\n${TASK_PROMPTS[taskId]}` },
+          ],
+          ...params, max_tokens: MAX_OUTPUT_TOKENS, stream: true,
+        });
+
+        let section = "", first = true, tStart = 0;
+        for await (const part of stream) {
+          const delta = part.choices?.[0]?.delta?.content || "";
+          if (!delta) continue;
+          if (first) { first = false; tStart = performance.now(); setProgress(multi ? `Section ${i + 1} of ${plan.chunks.length} · writing` : "Writing…", ""); }
+          section += delta; state.output += delta;
+          const secs = (performance.now() - tStart) / 1000;
+          const toks = Math.round(section.length / 4);
+          setProgressSub(`~${fmt(toks)} tokens${secs > 1 ? ` · ${(toks / secs).toFixed(1)} tok/s` : ""}${taskId === "autofix" ? ` · ${(section.match(/<\/fix>/gi) || []).length + aiFixes.length} fixes so far` : ""}`);
+          scheduleOutputRender();
+        }
+        if (taskId === "autofix") aiFixes.push(...parseFixesFromOutput(section));
+      }
+    } catch (err) {
+      const msg = String(err?.message || err);
+      errorMsg = /context|exceed|too long|prompt tokens/i.test(msg)
+        ? "The document is too long for this model's memory. Try a shorter document or the Balanced/Max model."
+        : /device.*lost|out of memory|OOM/i.test(msg)
+        ? "The GPU ran out of memory. Reload with the Light model and try again."
+        : msg;
+      toast(`Analysis failed: ${errorMsg}`, "bad");
+    } finally {
+      const elapsed = performance.now() - state.t0;
+      stopProgress();
+      state.running = false;
+      const stopped = state.stopRequested;
+      state.stopRequested = false;
+      if (errorMsg) state.output += `\n\n⚠️ ${errorMsg}`;
+      if (stopped) state.output += "\n\n— Stopped —";
+
+      if (taskId === "autofix") {
+        const scan = state.fixes.filter((f) => f.source === "scan");
+        const seen = new Set(scan.map((f) => f.original.toLowerCase()));
+        const fresh = aiFixes.filter((f) => !seen.has(f.original.toLowerCase()) && seen.add(f.original.toLowerCase()));
+        state.fixes = [...scan, ...fresh.map((f, i) => ({ ...f, id: `ai-${Date.now()}-${i}` }))];
+        state.filter = "all";
+        if (!errorMsg) {
+          if (fresh.length) {
+            toast(`Found ${fresh.length} suggested fix${fresh.length > 1 ? "es" : ""} in ${fmtTime(elapsed)}`, "ok");
+            setTab("fixes");
+          } else if (!stopped) {
+            toast(scan.length ? "The AI found nothing new — instant-scan results are still in the queue." : "No problems reported. Try the Consistency report for a broader review.", "info");
+          }
+        }
+      } else if (!errorMsg && !stopped) {
+        toast(`${task.title} finished in ${fmtTime(elapsed)}`, "ok");
+      }
+      renderAll();
+    }
+  }
+
+  function stopAnalysis() {
+    if (!state.running) return;
+    state.stopRequested = true;
+    try { state.engine?.interruptGenerate(); } catch {}
+    setProgress("Stopping…", "");
+  }
+
+  /* ---------- progress strip ---------- */
+  function startProgress(stage, sub) {
+    state.t0 = performance.now();
+    $("#progress").classList.remove("hidden");
+    setProgress(stage, sub);
+    clearInterval(state.timer);
+    state.timer = setInterval(() => ($("#prog-time").textContent = fmtTime(performance.now() - state.t0)), 500);
+    $("#prog-time").textContent = "0:00";
+  }
+  function setProgress(stage, sub) { $("#prog-stage").textContent = stage; setProgressSub(sub); }
+  function setProgressSub(sub) { $("#prog-sub").textContent = sub || ""; }
+  function stopProgress() { clearInterval(state.timer); $("#progress").classList.add("hidden"); }
+
+  /* ======================================================================
+     Fix queue actions
+     ====================================================================== */
+  function setFixStatus(i, status) {
+    const f = state.fixes[i]; if (!f) return;
+    f.status = f.status === status ? "pending" : status;
+    f.editing = false;
+    refreshFixes(i);
+  }
+  function setAllPending(status) {
+    let n = 0;
+    state.fixes.forEach((f) => { if (f.status === "pending") { f.status = status; n++; } });
+    if (!n) { toast("Nothing pending to update.", "info"); return; }
+    renderFixes(); renderTabs();
+  }
+  async function copyText(text, label = "Copied to clipboard") {
+    try { await navigator.clipboard.writeText(text); toast(label, "ok"); }
+    catch {
+      const ta = document.createElement("textarea"); ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); toast(label, "ok"); } catch { toast("Couldn't access the clipboard.", "bad"); }
+      ta.remove();
+    }
+  }
+
+  function applyApprovedFixes() {
+    const approved = state.fixes.filter((f) => f.status === "approved");
+    if (!approved.length) { toast("Approve at least one fix first.", "warn"); return; }
+    if (state.finalDirty && !confirm("You've edited the final document by hand. Applying fixes rebuilds it from the original IEP text, so your manual edits will be lost. Continue?")) return;
+
+    let doc = baseDoc();
+    let inline = 0;
+    const manual = [];
+    for (const f of approved) {
+      const re = flexRegex(f.original);
+      if (re && re.test(doc)) {
+        doc = doc.replace(re, () => f.replacement); // function replacer: "$" in text is kept literally
+        inline++;
+      } else manual.push(f);
+    }
+    if (manual.length) {
+      doc = "=== APPROVED CORRECTIONS TO PLACE MANUALLY ===\n(These passages couldn't be matched word-for-word in the document.)\n\n" +
+        manual.map((f) => `[${f.page}] ${f.issue}\n  Replace: “${f.original}”\n  With:    “${f.replacement}”`).join("\n\n") +
+        "\n\n==============================================\n\n" + doc;
+    }
+    state.finalDoc = doc; state.finalDirty = false;
+    state.applyStats = { approved: approved.length, inline, manual: manual.length };
+    setTab("final");
+    toast(`Applied ${inline} fix${inline === 1 ? "" : "es"}${manual.length ? ` · ${manual.length} need manual placement` : ""}`, manual.length ? "warn" : "ok");
+  }
+
+  /* ---------- word diff ---------- */
+  function diffWords(a, b) {
+    const A = a.match(/\s+|[^\s]+/g) || [], B = b.match(/\s+|[^\s]+/g) || [];
+    const n = A.length, m = B.length;
+    if (n * m > 200000) return [{ t: "del", s: a }, { t: "ins", s: b }];
+    const dp = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
+      dp[i][j] = A[i] === B[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    const out = [];
+    const push = (t, s) => { const l = out[out.length - 1]; if (l && l.t === t) l.s += s; else out.push({ t, s }); };
+    let i = 0, j = 0;
+    while (i < n && j < m) {
+      if (A[i] === B[j]) { push("eq", A[i]); i++; j++; }
+      else if (dp[i + 1][j] >= dp[i][j + 1]) push("del", A[i++]);
+      else push("ins", B[j++]);
+    }
+    while (i < n) push("del", A[i++]);
+    while (j < m) push("ins", B[j++]);
+    return out;
+  }
+
+  /* ---------- tiny safe markdown renderer ---------- */
+  function md(src) {
+    const inline = (s) => esc(s)
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/(^|[\s(])\*([^*\s][^*]*?)\*(?=[\s).,;:!?]|$)/g, "$1<em>$2</em>");
+    let html = "", list = null, para = [];
+    const flush = () => { if (para.length) { html += `<p>${para.map(inline).join("<br>")}</p>`; para = []; } };
+    const close = () => { if (list) { html += `</${list}>`; list = null; } };
+    for (const line of src.replace(/\r/g, "").split("\n")) {
+      let m;
+      if (/^\s*(---|___|\*\*\*)\s*$/.test(line)) { flush(); close(); html += "<hr>"; }
+      else if ((m = line.match(/^\s*(#{1,6})\s+(.*)$/))) { flush(); close(); const l = Math.min(4, m[1].length + 1); html += `<h${l}>${inline(m[2])}</h${l}>`; }
+      else if ((m = line.match(/^\s*[-*•]\s+(.*)$/))) { flush(); if (list !== "ul") { close(); html += "<ul>"; list = "ul"; } html += `<li>${inline(m[1])}</li>`; }
+      else if ((m = line.match(/^\s*\d+[.)]\s+(.*)$/))) { flush(); if (list !== "ol") { close(); html += "<ol>"; list = "ol"; } html += `<li>${inline(m[1])}</li>`; }
+      else if (!line.trim()) { flush(); close(); }
+      else { close(); para.push(line); }
+    }
+    flush(); close();
+    return html;
+  }
+
+  /* ======================================================================
+     Rendering
+     ====================================================================== */
+  function renderAll() {
+    renderEngine(); renderStatusPill(); renderDocs(); renderMeter(); renderTasks(); renderRunBtn();
+    renderTabs(); renderOutput(); renderFixes(); renderFinal(); renderSteps();
+  }
+
+  function renderSteps() {
+    $("#step-engine").classList.toggle("done", !!state.engine);
+    $("#step-docs").classList.toggle("done", !!(state.docs.iep || state.docs.psych));
+    $("#step-task").classList.toggle("done", !!state.output && !state.running);
+  }
+
+  function renderStatusPill() {
+    const pill = $("#engine-pill");
+    let cls = "", txt = "AI not loaded";
+    if (state.loading) { cls = "busy"; txt = `Loading model · ${Math.round(state.loadProgress * 100)}%`; }
+    else if (state.running) { cls = "busy"; txt = "Analyzing…"; }
+    else if (state.engine) { cls = "ok"; txt = `${modelById(state.loadedModel).name} ready`; }
+    else if (state.loadError) { cls = "bad"; txt = "Model failed to load"; }
+    pill.className = `pill ${cls}`;
+    pill.innerHTML = `<span class="dot"></span>${esc(txt)}`;
+  }
+
+  function renderEngine() {
+    const body = $("#engine-body");
+    const locked = state.loading || state.running;
+    const opts = MODELS.map((m) => {
+      const sel = m.id === state.model;
+      const tags = [
+        m.id === state.loadedModel && state.engine ? `<span class="tag loaded">Loaded</span>` : "",
+        m.recommended && !state.lowSpec ? `<span class="tag accent">Recommended</span>` : "",
+        state.lowSpec && m.id === MODELS[0].id ? `<span class="tag accent">Best fit</span>` : "",
+      ].join("");
+      return `<label class="model-opt ${sel ? "sel" : ""} ${locked ? "disabled" : ""}">
+        <input type="radio" name="model" value="${m.id}" ${sel ? "checked" : ""} ${locked ? "disabled" : ""} />
+        <span class="radio"></span>
+        <div class="mo-main"><div class="mo-name">${m.name}${tags}</div><div class="mo-detail">${m.detail} · ${m.note}</div></div>
+        <div class="mo-size">${m.cached ? `<span class="tag ok">Saved</span>` : m.size}</div>
+      </label>`;
+    }).join("");
+
+    let action = "";
+    const sel = modelById(state.model);
+    if (state.loading) {
+      const pct = Math.round(state.loadProgress * 100);
+      action = `<div class="load-box">
+        <div class="load-top"><span>${sel.cached ? "Loading" : "Downloading"} ${esc(sel.name)} model</span><span id="load-pct">${pct}%</span></div>
+        <div class="bar"><span id="load-bar" style="width:${pct}%"></span></div>
+        <div class="load-text" id="load-text">${esc(state.loadText)}</div>
+      </div>
+      <p class="note">${sel.cached ? "Loading from this computer's cache." : `First download is ${sel.size}; after that it loads from cache and works offline.`}</p>`;
+    } else if (state.webgpu === false) {
+      action = `<div class="callout">${icon("alert")}<div><b>WebGPU isn't available in this browser.</b><br>Open this page in a recent desktop Chrome or Edge to run the local AI. The instant name/pronoun scan still works.</div></div>`;
+    } else if (state.engine && state.loadedModel === state.model) {
+      action = `<div class="ready-row">${icon("check")}<span class="grow">Ready · ${Math.round(state.loadedCtx / 1024)}k token memory</span>
+        <button class="btn sm ghost" data-act="unload" ${state.running ? "disabled" : ""}>Unload</button></div>`;
+    } else {
+      const label = state.engine ? `Switch to ${sel.name}` : `Load ${sel.name} model`;
+      action = `<button class="btn ${state.engine ? "" : "primary"} lg" data-act="load" ${state.webgpu === null || state.running ? "disabled" : ""}>${icon("cpu")}${esc(label)}<span style="opacity:.7;font-weight:500">${sel.cached ? "" : `· ${sel.size}`}</span></button>`;
+      if (state.loadError) action += `<p class="note bad">${esc(state.loadError)}</p>`;
+    }
+    body.innerHTML = `<div class="model-list" role="radiogroup" aria-label="Model">${opts}</div>${action}`;
+  }
+
+  function renderDocs() { renderDoc("iep"); renderDoc("psych"); }
+  function renderDoc(type) {
+    const slot = $(`#slot-${type}`);
+    const doc = state.docs[type], parsing = state.parsing[type];
+    const isIep = type === "iep";
+    if (parsing) {
+      slot.innerHTML = `<div class="file-card"><div class="fc-row"><div class="fc-icon" style="background:var(--accent-soft);color:var(--accent-text)"><span class="spinner"></span></div>
+        <div class="fc-main"><div class="fc-name">Reading PDF…</div><div class="fc-meta" id="parse-${type}">${parsing.total ? `Reading page ${parsing.page} of ${parsing.total}…` : "Opening…"}</div></div></div></div>`;
+      return;
+    }
+    if (!doc) {
+      slot.innerHTML = `<button class="dropzone ${isIep ? "primary" : ""}" data-pick="${type}">
+        <span class="dz-icon">${icon(isIep ? "upload" : "file", "lg")}</span>
+        <span><span class="dz-title">${isIep ? "Draft IEP" : "Psych evaluation"} <span class="tag ${isIep ? "accent" : ""}">${isIep ? "Required" : "Optional"}</span></span>
+        <span class="dz-sub">${isIep ? "Drop a PDF here or click to browse" : "Add to cross-check scores & recommendations"}</span></span>
+      </button>`;
+      return;
+    }
+    const scanCount = isIep ? state.fixes.filter((f) => f.source === "scan").length : 0;
+    const extra = [];
+    if (isIep) extra.push(scanCount
+      ? `<button class="chip warn" data-goto="fixes">${icon("bolt")}${scanCount} name/pronoun flag${scanCount > 1 ? "s" : ""} · review</button>`
+      : `<span class="chip ok">${icon("bolt")}Instant scan: no name/pronoun issues</span>`);
+    if (doc.scanned) extra.push(`<span class="chip warn">${icon("alert")}Little text found — scanned PDF?</span>`);
+    slot.innerHTML = `<div class="file-card" data-drop="${type}">
+      <div class="fc-row">
+        <div class="fc-icon">PDF</div>
+        <div class="fc-main"><div class="fc-name" title="${esc(doc.name)}">${esc(doc.name)}</div>
+          <div class="fc-meta">${isIep ? "Draft IEP" : "Psych evaluation"} · ${doc.pages.length} page${doc.pages.length > 1 ? "s" : ""} · ~${fmt(doc.tokens)} tokens</div></div>
+        <button class="btn sm ghost" data-pick="${type}" title="Replace file" aria-label="Replace file" ${state.running ? "disabled" : ""}>${icon("refresh")}</button>
+        <button class="btn sm ghost" data-remove="${type}" title="Remove file" aria-label="Remove file" ${state.running ? "disabled" : ""}>${icon("trash")}</button>
+      </div>
+      ${extra.length ? `<div class="fc-extra">${extra.join("")}</div>` : ""}
+    </div>`;
+  }
+
+  function renderMeter() {
+    const el = $("#meter");
+    const total = (state.docs.iep?.tokens || 0) + (state.docs.psych?.tokens || 0);
+    if (!total) { el.classList.add("hidden"); return; }
+    el.classList.remove("hidden");
+    const budget = tokenBudget();
+    const ratio = total / budget;
+    const task = TASKS.find((t) => t.id === state.task);
+    let cls = "", note;
+    if (ratio <= 0.85) note = "Fits in a single pass.";
+    else if (ratio <= 1) { cls = "warn"; note = "Fits, but close to the model's limit."; }
+    else if (task.chunkable && state.docs.iep) { cls = "warn"; note = `Long document: will be reviewed in about ${Math.ceil(state.docs.iep.tokens / (budget - 40))} sections.`; }
+    else { cls = "over"; note = "Too long to read at once: later pages will be left out for this action."; }
+    el.className = `meter ${cls}`;
+    el.innerHTML = `<div class="meter-top"><b>Model memory</b><span>~${fmt(total)} / ${fmt(budget)} tokens</span></div>
+      <div class="bar"><span style="width:${Math.min(100, ratio * 100).toFixed(1)}%"></span></div>
+      <div class="meter-note">${note}${state.engine ? "" : ` Based on the ${esc(modelById(state.model).name)} model.`}</div>`;
+  }
+
+  function renderTasks() {
+    const el = $("#task-list");
+    el.innerHTML = TASKS.map((t) => {
+      const sel = t.id === state.task;
+      const hint = t.needsPsych && !state.docs.psych ? `<span class="tag warn">Add psych eval</span>` : "";
+      return `<label class="task ${sel ? "sel" : ""}">
+        <input type="radio" name="task" value="${t.id}" ${sel ? "checked" : ""} ${state.running ? "disabled" : ""}/>
+        <span class="task-icon">${icon(t.icon)}</span>
+        <span><span class="task-title">${t.title}${hint}</span><span class="task-desc">${t.desc}</span></span>
+      </label>`;
+    }).join("");
+  }
+
+  function renderRunBtn() {
+    const b = $("#run-btn");
+    if (state.running) {
+      b.className = "btn danger lg"; b.disabled = state.stopRequested;
+      b.innerHTML = `${icon("stop")}${state.stopRequested ? "Stopping…" : "Stop"}`;
+    } else {
+      const ready = state.engine && (state.docs.iep || state.docs.psych);
+      b.className = "btn primary lg"; b.disabled = state.loading;
+      b.innerHTML = `${icon("play")}Run ${esc(TASKS.find((t) => t.id === state.task).title.toLowerCase())}<kbd>${isMac ? "⌘" : "Ctrl"} ↵</kbd>`;
+      b.title = ready ? "" : !state.engine ? "Load the AI model first" : "Upload a document first";
+    }
+  }
+
+  function setTab(tab) { state.tab = tab; renderTabs(); if (tab === "final") renderFinal(); if (tab === "fixes") renderFixes(); }
+  function renderTabs() {
+    $$(".tab").forEach((b) => { const on = b.dataset.tab === state.tab; b.classList.toggle("active", on); b.setAttribute("aria-selected", on); });
+    ["output", "fixes", "final"].forEach((t) => $(`#view-${t}`).classList.toggle("hidden", t !== state.tab));
+    const pending = state.fixes.filter((f) => f.status === "pending").length;
+    const c = $("#fix-count"); c.textContent = state.fixes.length ? (pending || state.fixes.length) : 0;
+    c.classList.toggle("has", state.fixes.length > 0);
+    c.title = `${pending} pending of ${state.fixes.length}`;
+    const actions = $("#ws-actions");
+    actions.innerHTML = state.tab === "output" && state.output
+      ? `<button class="btn sm" data-act="copy-output" ${state.running ? "disabled" : ""}>${icon("copy")}Copy output</button>` : "";
+  }
+
+  let renderQueued = false;
+  function scheduleOutputRender() {
+    if (renderQueued) return;
+    renderQueued = true;
+    requestAnimationFrame(() => { renderQueued = false; renderOutput(); });
+  }
+  function renderOutputIfEmpty() { if (!state.output && !state.running) renderOutput(); }
+
+  function renderOutput() {
+    const el = $("#output-scroll");
+    if (!state.output && !state.running) { el.innerHTML = emptyState(); return; }
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    const caret = state.running ? `<span class="caret"></span>` : "";
+    const meta = state.outputMeta;
+    const warn = state.outputWarnings.length
+      ? `<div class="callout warn out-warn">${icon("alert")}<div>${state.outputWarnings.map(esc).join("<br>")}</div></div>` : "";
+    const head = meta ? `<div class="out-meta"><span class="title">${esc(meta.title)}</span><span class="chip">${icon("cpu")}${esc(meta.model)}</span>${meta.sections > 1 ? `<span class="chip">${meta.sections} sections</span>` : ""}</div>` : "";
+    const body = !state.output
+      ? `<p style="color:var(--muted)">Waiting for the model's first words…${caret}</p>`
+      : state.outputTask === "autofix"
+      ? `<pre class="raw">${esc(state.output)}${caret}</pre>`
+      : `<div class="prose">${md(state.output)}${caret}</div>`;
+    el.innerHTML = head + warn + body;
+    if (state.running && nearBottom) el.scrollTop = el.scrollHeight;
+    renderTabs();
+  }
+
+  function emptyState() {
+    const steps = [
+      { done: !!state.engine, title: "Load the AI model", sub: state.webgpu === false ? "Needs Chrome or Edge with WebGPU" : "One-time download, then it runs offline" },
+      { done: !!(state.docs.iep || state.docs.psych), title: "Upload the draft IEP", sub: "An instant name & pronoun check runs right away" },
+      { done: false, title: "Pick an action and run it", sub: "Review suggested fixes, approve, and export" },
+    ];
+    return `<div class="empty">
+      <div class="empty-art">${icon("sparkles", "xl")}</div>
+      <h3>Review an IEP draft in minutes</h3>
+      <p>Catch leftover names, pronoun slips, mismatched scores and vague goals. Everything runs on this computer; nothing is uploaded.</p>
+      <div class="checklist">${steps.map((s) => `<div class="check-item ${s.done ? "done" : ""}"><span class="check-mark">${icon("check")}</span><div><div class="ci-title">${s.title}</div><div class="ci-sub">${s.sub}</div></div></div>`).join("")}</div>
+      <div class="features">
+        <div class="feature">${icon("bolt")}<b>Instant scan</b><span>Name & pronoun mismatches flagged on upload</span></div>
+        <div class="feature">${icon("listcheck")}<b>You approve</b><span>Side-by-side changes; nothing applies on its own</span></div>
+        <div class="feature">${icon("download")}<b>Export</b><span>Copy fixes into SEIS or download for Word</span></div>
+      </div>
+    </div>`;
+  }
+
+  /* ---------- fixes ---------- */
+  const visibleFixIdx = () => state.fixes.map((f, i) => i).filter((i) => state.filter === "all" || state.fixes[i].status === state.filter);
+
+  function renderFixToolbar() {
+    const n = (s) => state.fixes.filter((f) => f.status === s).length;
+    const approved = n("approved");
+    const filters = [["all", "All", state.fixes.length], ["pending", "Pending", n("pending")], ["approved", "Approved", approved], ["rejected", "Rejected", n("rejected")]];
+    $("#fix-toolbar").innerHTML = `
+      <div class="filters">${filters.map(([k, l, c]) => `<button class="filter ${state.filter === k ? "active" : ""}" data-filter="${k}">${l}<span class="n">${c}</span></button>`).join("")}</div>
+      <div class="tb-right">
+        <button class="btn sm ghost" data-act="approve-all" ${n("pending") ? "" : "disabled"}>${icon("check")}Approve all pending</button>
+        <button class="btn sm success" data-act="apply" ${approved ? "" : "disabled"}>Apply ${approved || ""} approved ${icon("arrow")}</button>
+      </div>`;
+    $("#fix-hint").classList.toggle("hidden", !state.fixes.length);
+  }
+
+  function fixCard(f, i) {
+    const d = diffWords(f.original, f.replacement);
+    const orig = d.map((o) => (o.t === "ins" ? "" : o.t === "del" ? `<del>${esc(o.s)}</del>` : esc(o.s))).join("");
+    const repl = d.map((o) => (o.t === "del" ? "" : o.t === "ins" ? `<ins>${esc(o.s)}</ins>` : esc(o.s))).join("");
+    const statusBadge = f.status === "approved" ? `<span class="status approved">${icon("check")}Approved</span>`
+      : f.status === "rejected" ? `<span class="status rejected">${icon("x")}Rejected</span>` : `<span class="status pending">Pending</span>`;
+    const src = f.source === "scan" ? `<span class="src scan">${icon("bolt")}Instant scan</span>` : `<span class="src ai">${icon("sparkles")}AI</span>`;
+    const located = f.located
+      ? `<span class="located ok" title="This passage was found in the document and will be replaced in place.">${icon("check")}Found in document</span>`
+      : `<span class="located no" title="The AI's quote doesn't match the document word-for-word. If approved, it will be listed at the top of the final document for manual placement.">${icon("alert")}Not found verbatim</span>`;
+    return `<article class="fix ${f.status} ${state.focusIdx === i ? "focused" : ""}" data-i="${i}" tabindex="0" aria-label="${esc(f.issue)}">
+      <div class="fix-head">
+        <div class="grow">
+          <div class="fix-badges">${src}<span class="page-chip">${esc(f.page)}</span></div>
+          <p class="fix-issue">${esc(f.issue)}</p>
+          ${f.note ? `<div class="fix-note">${esc(f.note)}</div>` : ""}
+        </div>
+        ${statusBadge}
+      </div>
+      <div class="diff">
+        <div class="pane"><div class="pane-label">Original</div><div class="pane-text">${orig}</div></div>
+        <div class="pane"><div class="pane-label">Proposed ${f.editing ? "" : `<button class="btn sm ghost" data-act="edit" style="height:22px;padding:0 6px">${icon("edit")}Edit</button>`}</div>
+          ${f.editing ? `<textarea data-edit="${i}" aria-label="Edit proposed text">${esc(f.replacement)}</textarea>
+            <div style="display:flex;justify-content:flex-end;margin-top:6px"><button class="btn sm primary" data-act="done-edit">Done</button></div>`
+          : `<div class="pane-text">${repl}</div>`}
+        </div>
+      </div>
+      <div class="fix-foot">
+        <div class="left">${located}</div>
+        <div class="right">
+          <button class="btn sm ghost" data-act="copy" title="Copy the proposed text (for pasting into SEIS)">${icon("copy")}Copy</button>
+          <button class="btn sm" data-act="reject">${icon("x")}${f.status === "rejected" ? "Undo" : "Reject"}</button>
+          <button class="btn sm ${f.status === "approved" ? "" : "success"}" data-act="approve">${icon("check")}${f.status === "approved" ? "Undo" : "Approve"}</button>
+        </div>
+      </div>
+    </article>`;
+  }
+
+  function renderFixes() {
+    renderFixToolbar();
+    const list = $("#fix-list");
+    if (!state.fixes.length) {
+      list.innerHTML = `<div class="empty" style="margin-top:36px"><div class="empty-art">${icon("list", "xl")}</div>
+        <h3>No suggested fixes yet</h3>
+        <p>${state.docs.iep ? "The instant scan didn't flag anything. Run the <b>Fix queue</b> action to let the AI look for deeper issues." : "Upload a draft IEP to run the instant name & pronoun scan, then run the Fix queue action."}</p></div>`;
+      return;
+    }
+    const idx = visibleFixIdx();
+    list.innerHTML = idx.length ? idx.map((i) => fixCard(state.fixes[i], i)).join("")
+      : `<p style="text-align:center;color:var(--muted);padding:40px 0">No ${state.filter} fixes.</p>`;
+  }
+
+  function refreshFixes(i, focusNext = false) {
+    if (state.filter === "all") {
+      const el = $(`.fix[data-i="${i}"]`);
+      if (el) el.outerHTML = fixCard(state.fixes[i], i); else renderFixes();
+      renderFixToolbar();
+    } else renderFixes();
+    renderTabs(); renderDoc("iep");
+    if (focusNext) focusFix(nextVisible(i, 1) ?? i);
+  }
+  function nextVisible(i, dir) {
+    const idx = visibleFixIdx(); if (!idx.length) return null;
+    const pos = idx.indexOf(i);
+    if (pos === -1) return idx.find((x) => (dir > 0 ? x > i : x < i)) ?? idx[dir > 0 ? idx.length - 1 : 0];
+    return idx[Math.min(idx.length - 1, Math.max(0, pos + dir))];
+  }
+  function focusFix(i) {
+    if (i == null) return;
+    state.focusIdx = i;
+    $$(".fix.focused").forEach((el) => el.classList.remove("focused"));
+    const el = $(`.fix[data-i="${i}"]`);
+    if (el) { el.classList.add("focused"); el.focus({ preventScroll: true }); el.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
+  }
+
+  /* ---------- final doc ---------- */
+  function renderFinal() {
+    const ta = $("#final-doc");
+    const text = state.finalDoc ?? baseDoc();
+    if (document.activeElement !== ta && ta.value !== text) ta.value = text;
+    const s = state.applyStats;
+    const stats = [];
+    if (s) {
+      stats.push(`<span class="chip ok">${icon("check")}${s.inline} applied in place</span>`);
+      if (s.manual) stats.push(`<span class="chip warn">${icon("alert")}${s.manual} to place manually (listed at top)</span>`);
+    } else if (text) stats.push(`<span class="chip">${icon("info")}Original text — approve fixes and click Apply to merge them</span>`);
+    else stats.push(`<span class="chip">${icon("info")}No document loaded</span>`);
+    if (state.finalDirty) stats.push(`<span class="chip">${icon("edit")}Edited by hand</span>`);
+    $("#final-stats").innerHTML = stats.join("");
+    ["#copy-doc-btn", "#txt-btn", "#word-btn"].forEach((id) => ($(id).disabled = !text));
+    $("#reset-doc-btn").disabled = !(state.finalDoc != null);
+  }
+
+  const docBaseName = () => (state.docs.iep?.name || state.docs.psych?.name || "IEP").replace(/\.pdf$/i, "").replace(/[^\w\- ]+/g, "").trim() || "IEP";
+  function download(name, blob) {
+    const url = URL.createObjectURL(blob);
+    const a = Object.assign(document.createElement("a"), { href: url, download: name });
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  }
+  function exportWord() {
+    const text = $("#final-doc").value;
+    let firstPage = true;
+    const body = text.split("\n").map((line) => {
+      const m = line.match(/^── Page (\d+) ──$/);
+      if (m) { const br = firstPage ? "" : ' style="page-break-before:always"'; firstPage = false; return `<p class="pg"${br}>Page ${m[1]}</p>`; }
+      if (/^={5,}|^=== APPROVED/.test(line)) return `<p class="banner">${esc(line.replace(/=+/g, "").trim())}</p>`;
+      return line.trim() ? `<p>${esc(line)}</p>` : `<p>&nbsp;</p>`;
+    }).join("\n");
+    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8"><title>${esc(docBaseName())} – corrected</title>
+<style>body{font-family:Calibri,Arial,sans-serif;font-size:11pt;line-height:1.35}p{margin:0 0 4pt}.pg{font-size:9pt;color:#888;border-bottom:1px solid #ccc;margin:0 0 10pt}.banner{font-weight:bold;color:#9a5a06}</style></head>
+<body>${body}</body></html>`;
+    download(`${docBaseName()}_corrected.doc`, new Blob(["﻿", html], { type: "application/msword" }));
+    toast("Word document downloaded", "ok");
+  }
+
+  /* ======================================================================
+     Events
+     ====================================================================== */
+  function bindEvents() {
+    // Static icons
+    $$("[data-icon]").forEach((el) => (el.outerHTML = icon(el.dataset.icon)));
+
+    // Theme
+    const themeBtn = $("#theme-btn");
+    const paintTheme = () => (themeBtn.innerHTML = icon(document.documentElement.dataset.theme === "dark" ? "sun" : "moon", "lg"));
+    themeBtn.onclick = () => {
+      const t = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+      document.documentElement.dataset.theme = t; lsSet("iep-theme", t); paintTheme();
+    };
+    paintTheme();
+
+    // Engine
+    $("#engine-body").addEventListener("change", (e) => {
+      if (e.target.name === "model") { state.model = e.target.value; lsSet("iep-model", state.model); renderEngine(); renderMeter(); }
+    });
+    $("#engine-body").addEventListener("click", (e) => {
+      const act = e.target.closest("[data-act]")?.dataset.act;
+      if (act === "load") loadEngine();
+      if (act === "unload") unloadEngine();
+    });
+
+    // Documents: click, replace, remove, drag & drop
+    const inputs = { iep: $("#file-iep"), psych: $("#file-psych") };
+    Object.entries(inputs).forEach(([type, input]) => {
+      input.addEventListener("change", () => { const f = input.files[0]; input.value = ""; handleFile(type, f); });
+    });
+    $("#step-docs").addEventListener("click", (e) => {
+      const pick = e.target.closest("[data-pick]"); if (pick && !state.running) inputs[pick.dataset.pick].click();
+      const rm = e.target.closest("[data-remove]"); if (rm) removeDoc(rm.dataset.remove);
+      const go = e.target.closest("[data-goto]"); if (go) setTab(go.dataset.goto);
+    });
+    ["iep", "psych"].forEach((type) => {
+      const slot = $(`#slot-${type}`);
+      const target = () => slot.firstElementChild;
+      slot.addEventListener("dragover", (e) => { e.preventDefault(); target()?.classList.add("drag"); });
+      slot.addEventListener("dragleave", (e) => { if (!slot.contains(e.relatedTarget)) target()?.classList.remove("drag"); });
+      slot.addEventListener("drop", (e) => { e.preventDefault(); target()?.classList.remove("drag"); handleFile(type, e.dataTransfer.files[0]); });
+    });
+    // Don't let a missed drop navigate away and lose work
+    window.addEventListener("dragover", (e) => e.preventDefault());
+    window.addEventListener("drop", (e) => e.preventDefault());
+
+    // Tasks + run
+    $("#task-list").addEventListener("change", (e) => {
+      if (e.target.name === "task") { state.task = e.target.value; renderTasks(); renderRunBtn(); renderMeter(); }
+    });
+    $("#run-btn").onclick = () => (state.running ? stopAnalysis() : runAnalysis());
+
+    // Tabs + header actions
+    $$(".tab").forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
+    $("#ws-actions").addEventListener("click", (e) => {
+      if (e.target.closest("[data-act='copy-output']")) copyText(state.output, "Output copied");
+    });
+
+    // Fix toolbar
+    $("#fix-toolbar").addEventListener("click", (e) => {
+      const f = e.target.closest("[data-filter]");
+      if (f) { state.filter = f.dataset.filter; renderFixes(); return; }
+      const act = e.target.closest("[data-act]")?.dataset.act;
+      if (act === "approve-all") setAllPending("approved");
+      if (act === "apply") applyApprovedFixes();
+    });
+
+    // Fix cards (delegated)
+    const list = $("#fix-list");
+    list.addEventListener("click", (e) => {
+      const card = e.target.closest(".fix"); if (!card) return;
+      const i = +card.dataset.i, f = state.fixes[i];
+      state.focusIdx = i;
+      const act = e.target.closest("[data-act]")?.dataset.act;
+      if (act === "approve") setFixStatus(i, "approved");
+      else if (act === "reject") setFixStatus(i, "rejected");
+      else if (act === "copy") copyText(f.replacement, "Proposed text copied — paste it into SEIS");
+      else if (act === "edit") { f.editing = true; refreshFixes(i); const ta = $(`textarea[data-edit="${i}"]`); ta?.focus(); ta?.setSelectionRange(ta.value.length, ta.value.length); }
+      else if (act === "done-edit") { f.editing = false; refreshFixes(i); focusFix(i); }
+    });
+    list.addEventListener("input", (e) => {
+      const i = e.target.dataset.edit;
+      if (i != null && state.fixes[+i]) state.fixes[+i].replacement = e.target.value;
+    });
+    list.addEventListener("focusin", (e) => {
+      const card = e.target.closest(".fix"); if (!card) return;
+      state.focusIdx = +card.dataset.i;
+      $$(".fix.focused").forEach((el) => el !== card && el.classList.remove("focused"));
+    });
+
+    // Final document
+    $("#final-doc").addEventListener("input", (e) => { state.finalDoc = e.target.value; if (!state.finalDirty) { state.finalDirty = true; renderFinal(); } });
+    $("#reset-doc-btn").onclick = () => {
+      if (state.finalDirty && !confirm("Discard your edits and applied fixes, and go back to the original text?")) return;
+      state.finalDoc = null; state.finalDirty = false; state.applyStats = null; $("#final-doc").value = ""; renderFinal();
+    };
+    $("#copy-doc-btn").onclick = () => copyText($("#final-doc").value, "Full document copied");
+    $("#txt-btn").onclick = () => { download(`${docBaseName()}_corrected.txt`, new Blob([$("#final-doc").value], { type: "text/plain;charset=utf-8" })); toast("Text file downloaded", "ok"); };
+    $("#word-btn").onclick = exportWord;
+
+    // Keyboard shortcuts
+    document.addEventListener("keydown", (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); state.running ? stopAnalysis() : runAnalysis(); return; }
+      if (state.tab !== "fixes" || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) {
+        if (e.key === "Escape" && e.target.dataset.edit != null) { const i = +e.target.dataset.edit; state.fixes[i].editing = false; refreshFixes(i); focusFix(i); }
+        return;
+      }
+      const idx = visibleFixIdx(); if (!idx.length) return;
+      const cur = idx.includes(state.focusIdx) ? state.focusIdx : null;
+      const k = e.key.toLowerCase();
+      if (k === "arrowdown" || k === "j") { e.preventDefault(); focusFix(cur == null ? idx[0] : nextVisible(cur, 1)); }
+      else if (k === "arrowup" || k === "k") { e.preventDefault(); focusFix(cur == null ? idx[0] : nextVisible(cur, -1)); }
+      else if (cur != null && k === "a") { e.preventDefault(); const was = state.fixes[cur].status; setFixStatus(cur, "approved"); if (was !== "approved") focusFix(nextVisible(cur, 1) ?? cur); }
+      else if (cur != null && k === "r") { e.preventDefault(); const was = state.fixes[cur].status; setFixStatus(cur, "rejected"); if (was !== "rejected") focusFix(nextVisible(cur, 1) ?? cur); }
+      else if (cur != null && k === "e") { e.preventDefault(); state.fixes[cur].editing = true; refreshFixes(cur); $(`textarea[data-edit="${cur}"]`)?.focus(); }
+    });
+
+    // Warn before closing with unsaved work
+    window.addEventListener("beforeunload", (e) => {
+      if (state.running || state.finalDirty || state.fixes.some((f) => f.status !== "pending")) { e.preventDefault(); e.returnValue = ""; }
+    });
+  }
+
+  /* ======================================================================
+     Boot
+     ====================================================================== */
+  bindEvents();
+  renderAll();
+  checkHardware();
+
+  // Expose internals for debugging in the console
+  window.IEPCopilot = { state, runInstantScan, swapPronouns, parseFixesFromOutput, diffWords, buildPlan };
+})();
+</script>
+</body>
+</html>

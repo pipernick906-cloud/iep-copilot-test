@@ -1,0 +1,815 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IEP Local Copilot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+      if (window.pdfjsLib) {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+          "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+      }
+    </script>
+  </head>
+  <body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans select-none">
+    
+    <!-- App Header -->
+    <header class="border-b border-slate-800 bg-slate-900 px-6 py-4 flex justify-between items-center">
+      <div>
+        <div class="flex items-center space-x-2.5">
+          <h1 class="text-base font-bold text-indigo-400">IEP Local Copilot</h1>
+          <span id="hw-badge" class="text-[10px] font-mono bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-700">
+            Checking Hardware...
+          </span>
+        </div>
+        <p class="text-xs text-slate-400 mt-0.5">Offline Desktop Edition • Hybrid Name/Pronoun & XML AI Fix Engine</p>
+      </div>
+      <div class="flex items-center space-x-3">
+        <select id="model-select" class="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200">
+          <option value="Qwen2.5-1.5B-Instruct-q4f32_1-MLC">Qwen 2.5 1.5B (Laptop / Low-Memory Mode ~1.1GB)</option>
+          <option value="Llama-3.2-3B-Instruct-q4f32_1-MLC" selected>Llama 3.2 3B (Balanced Standard ~2.2GB)</option>
+          <option value="Llama-3.1-8B-Instruct-q4f32_1-MLC">Llama 3.1 8B (High-Spec Desktop / Mac ~5.2GB)</option>
+        </select>
+        <span id="model-status" class="text-xs font-mono text-amber-400">AI Engine: Offline</span>
+        <button id="init-ai-btn" onclick="window.initializeAI()" class="bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors cursor-pointer">
+          Initialize Local AI
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="flex-grow max-w-6xl w-full mx-auto p-6 grid grid-cols-12 gap-6">
+      
+      <!-- Left Column: Document Uploads & Controls (5 cols) -->
+      <div class="col-span-5 space-y-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
+          <h2 class="text-sm font-semibold text-slate-200">1. Load Student Documents</h2>
+          
+          <!-- PRIMARY: Draft IEP Document -->
+          <div class="border border-dashed border-emerald-700/60 rounded-lg p-3 bg-slate-950/50">
+            <div class="flex justify-between items-center mb-1">
+              <label class="block text-xs font-semibold text-emerald-400">Primary: Draft IEP Document (PDF)</label>
+              <span class="text-[10px] bg-emerald-950 text-emerald-300 px-1.5 py-0.5 rounded">Primary</span>
+            </div>
+            <input type="file" id="iep-upload" accept=".pdf" onchange="window.handleFileUpload(this, 'iep')" class="text-xs text-slate-400 file:mr-2 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:bg-slate-800 file:text-slate-200 cursor-pointer w-full"/>
+            <div id="iep-status" class="text-[11px] font-mono text-slate-500 mt-1">Waiting for IEP PDF...</div>
+          </div>
+
+          <!-- OPTIONAL: Past Psych Evaluation -->
+          <div class="border border-dashed border-slate-700 rounded-lg p-3 bg-slate-950/50">
+            <div class="flex justify-between items-center mb-1">
+              <label class="block text-xs font-medium text-indigo-300">Supporting: Psych Evaluation (PDF)</label>
+              <span class="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">Optional</span>
+            </div>
+            <input type="file" id="psych-upload" accept=".pdf" onchange="window.handleFileUpload(this, 'psych')" class="text-xs text-slate-400 file:mr-2 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:bg-slate-800 file:text-slate-200 cursor-pointer w-full"/>
+            <div id="psych-status" class="text-[11px] font-mono text-slate-500 mt-1">Optional — upload to cross-check scores</div>
+          </div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
+          <h2 class="text-sm font-semibold text-slate-200">2. Select Copilot Action</h2>
+          <select id="task-select" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-slate-200">
+            <option value="autofix" selected>✨ Generate Interactive Fix Queue (Approve & Auto-Apply)</option>
+            <option value="proofread">Proofread IEP & Internal Consistency Report</option>
+            <option value="audit">Cross-Document Psych vs. IEP Discrepancy Audit</option>
+            <option value="goals">Draft 3 Measurable SMART Goals from PLAAFP</option>
+            <option value="jargon">Rewrite Findings in Parent-Friendly Plain Language</option>
+          </select>
+
+          <div class="flex space-x-2">
+            <button id="run-btn" onclick="window.runAnalysis()" class="flex-grow bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 font-semibold py-2.5 rounded-lg text-xs transition-colors shadow-lg shadow-emerald-600/20 cursor-pointer">
+              Run Local Analysis
+            </button>
+            <button id="stop-btn" onclick="window.stopAnalysis()" class="hidden bg-rose-600 hover:bg-rose-500 font-semibold px-4 py-2.5 rounded-lg text-xs transition-colors cursor-pointer">
+              Stop
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Output, Approval Queue & Applied Preview (7 cols) -->
+      <div class="col-span-7 flex flex-col space-y-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex-grow flex flex-col">
+          
+          <!-- Workspace Tabs & Token Counter -->
+          <div class="flex justify-between items-center border-b border-slate-800 pb-3 mb-3">
+            <div class="flex space-x-2">
+              <button id="tab-btn-stream" onclick="window.switchTab('stream')" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-indigo-600 text-white cursor-pointer">
+                1. Live Output
+              </button>
+              <button id="tab-btn-fixes" onclick="window.switchTab('fixes')" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 cursor-pointer">
+                2. Review & Approve Fixes <span id="fix-count-badge" class="ml-1 bg-slate-950 text-indigo-300 px-1.5 py-0.5 rounded-full text-[10px]">0</span>
+              </button>
+              <button id="tab-btn-final" onclick="window.switchTab('final')" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 cursor-pointer">
+                3. Applied Document
+              </button>
+            </div>
+            <span id="token-estimate" class="text-[11px] font-mono text-slate-500">0 est. tokens</span>
+          </div>
+
+          <!-- Active Progress & Timer Banner -->
+          <div id="progress-banner" class="hidden mb-3 bg-indigo-950/60 border border-indigo-500/40 rounded-lg px-3.5 py-2.5 flex items-center justify-between">
+            <div class="flex items-center space-x-2.5">
+              <span class="relative flex h-2.5 w-2.5">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-indigo-500"></span>
+              </span>
+              <span id="progress-stage" class="text-xs font-medium text-indigo-200">Working...</span>
+            </div>
+            <span id="progress-timer" class="text-xs font-mono font-bold text-indigo-300 bg-slate-900 px-2 py-0.5 rounded">00:00</span>
+          </div>
+
+          <!-- TAB 1: Live AI Stream -->
+          <div id="tab-stream" class="flex-grow flex flex-col">
+            <div id="ai-output" class="bg-slate-950 border border-slate-800 rounded-lg p-4 text-xs font-mono text-slate-200 whitespace-pre-wrap flex-grow overflow-y-auto h-[420px] select-text">1. Click "Initialize Local AI" in the top right corner.
+2. Upload your Draft IEP PDF on the left (Instant Name/Pronoun scanner runs immediately upon upload!).
+3. Click "Run Local Analysis" to catch deeper compliance/goal issues and review all fix cards in Tab 2.</div>
+          </div>
+
+          <!-- TAB 2: Interactive Fix Approval Queue -->
+          <div id="tab-fixes" class="hidden flex-grow flex flex-col h-[420px]">
+            <div class="flex justify-between items-center mb-3 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+              <div class="text-xs text-slate-300">
+                Review proposed changes below. Edit green text or click <strong>Copy Fix</strong> for SEIS.
+              </div>
+              <div class="flex space-x-2">
+                <button onclick="window.setAllFixesStatus('approved')" class="bg-slate-800 hover:bg-slate-700 text-[11px] font-medium px-2.5 py-1 rounded text-emerald-300 cursor-pointer">
+                  Approve All
+                </button>
+                <button onclick="window.applyApprovedFixes()" class="bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold px-3 py-1 rounded text-white shadow cursor-pointer">
+                  Apply Approved Fixes &rarr;
+                </button>
+              </div>
+            </div>
+
+            <div id="fixes-container" class="space-y-3 overflow-y-auto flex-grow pr-1">
+              <div class="text-xs text-slate-500 text-center py-16">
+                No fixes generated yet. Upload an IEP or run the analysis first.
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 3: Final Applied Document & Export -->
+          <div id="tab-final" class="hidden flex-grow flex flex-col h-[420px] space-y-3">
+            <div class="flex justify-between items-center bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+              <span id="applied-summary" class="text-xs text-emerald-400 font-medium">0 fixes applied to document.</span>
+              <div class="flex space-x-2">
+                <button onclick="window.copyFinalText()" class="bg-slate-800 hover:bg-slate-700 text-xs font-medium px-3 py-1.5 rounded-lg text-slate-200 cursor-pointer">
+                  Copy Full Text
+                </button>
+                <button onclick="window.exportToWord()" class="bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold px-3 py-1.5 rounded-lg text-white cursor-pointer">
+                  Export Corrected Document (.doc)
+                </button>
+              </div>
+            </div>
+            <textarea id="final-doc-textarea" class="w-full flex-grow bg-slate-950 border border-slate-800 rounded-lg p-4 text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-500 resize-none select-text" placeholder="Approved fixes will be merged into your document here..."></textarea>
+          </div>
+
+        </div>
+      </div>
+
+    </main>
+
+    <!-- Core Application Logic -->
+    <script>
+      window.engine = null;
+      window.webllmModule = null;
+      window.iepText = "";
+      window.iepPages = [];
+      window.psychText = "";
+      window.timerInterval = null;
+      window.startTime = 0;
+      window.maxContextTokens = 16384;
+      window.proposedFixes = [];
+      window.instantScannerFixes = [];
+
+      // Tab Controller
+      window.switchTab = function(tabName) {
+        ["stream", "fixes", "final"].forEach((t) => {
+          document.getElementById(`tab-${t}`).classList.add("hidden");
+          const btn = document.getElementById(`tab-btn-${t}`);
+          btn.className = "text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 cursor-pointer";
+        });
+        document.getElementById(`tab-${tabName}`).classList.remove("hidden");
+        document.getElementById(`tab-btn-${tabName}`).className =
+          "text-xs font-semibold px-3 py-1.5 rounded-lg bg-indigo-600 text-white cursor-pointer";
+      };
+
+      // Hardware Check
+      window.checkHardwareCapabilities = async function() {
+        const badge = document.getElementById("hw-badge");
+        const modelSelect = document.getElementById("model-select");
+        const ramGB = navigator.deviceMemory || 8;
+
+        if (!navigator.gpu) {
+          badge.innerText = "⚠️ WebGPU Not Detected";
+          badge.className = "text-[10px] font-mono bg-rose-950 text-rose-300 px-2 py-0.5 rounded border border-rose-800";
+          return;
+        }
+
+        try {
+          const adapter = await navigator.gpu.requestAdapter();
+          const maxBufferMB = adapter ? Math.round((adapter.limits?.maxStorageBufferBindingSize || 0) / (1024 * 1024)) : 0;
+
+          if (ramGB < 8 || (maxBufferMB > 0 && maxBufferMB < 1024)) {
+            modelSelect.value = "Qwen2.5-1.5B-Instruct-q4f32_1-MLC";
+            window.maxContextTokens = 12288;
+            badge.innerText = `Laptop Mode (~${ramGB}GB RAM • 12k Context)`;
+            badge.className = "text-[10px] font-mono bg-amber-950 text-amber-300 px-2 py-0.5 rounded border border-amber-800";
+          } else {
+            badge.innerText = `WebGPU Ready (~${ramGB}GB+ RAM • 16k Context)`;
+            badge.className = "text-[10px] font-mono bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded border border-emerald-800";
+          }
+          window.updateTokenEstimate();
+        } catch (e) {
+          badge.innerText = "WebGPU Active";
+        }
+      };
+
+      window.addEventListener("DOMContentLoaded", window.checkHardwareCapabilities);
+
+      window.startTimer = function(msg) {
+        const banner = document.getElementById("progress-banner");
+        const stageEl = document.getElementById("progress-stage");
+        const timerEl = document.getElementById("progress-timer");
+        banner.classList.remove("hidden");
+        stageEl.innerText = msg;
+        timerEl.innerText = "00:00";
+        window.startTime = Date.now();
+        clearInterval(window.timerInterval);
+        window.timerInterval = setInterval(() => {
+          const totalSecs = Math.floor((Date.now() - window.startTime) / 1000);
+          const mins = String(Math.floor(totalSecs / 60)).padStart(2, "0");
+          const secs = String(totalSecs % 60).padStart(2, "0");
+          timerEl.innerText = `${mins}:${secs}`;
+        }, 500);
+      };
+
+      window.stopTimer = function() {
+        clearInterval(window.timerInterval);
+        document.getElementById("progress-banner").classList.add("hidden");
+      };
+
+      window.updateTokenEstimate = function() {
+        const totalChars = (window.iepText.length || 0) + (window.psychText.length || 0);
+        const estTokens = Math.round(totalChars / 4);
+        document.getElementById("token-estimate").innerText =
+          `~${estTokens} / ${window.maxContextTokens} tokens`;
+      };
+
+      // Precision Local Scanner: Only inspects mid-sentence proper nouns & filters out common English words/suffixes
+      window.runDeterministicNameScan = function(pages) {
+        const detectedFixes = [];
+        const commonStopWords = new Set([
+          "The","This","That","These","Those","Student","Present","Levels","Annual","Goal","Goals","Page","Start","End",
+          "March","April","May","June","July","August","September","October","November","December","January","February",
+          "Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday","English","Math","Reading","Writing",
+          "Speech","Language","Special","Education","Services","Accommodations","Modifications","District","School",
+          "Individualized","Program","Assessment","Evaluation","Standard","Score","Percentile","Grade","Date","Birth",
+          "Parent","Guardian","Teacher","Psychologist","When","Given","With","From","Into","During","After","Before",
+          "Based","Upon","Current","Baseline","Mastery","Criteria","Progress","Report","Quarterly","Minutes","Weekly",
+          "Daily","Monthly","Yearly","General","Setting","Classroom","Support","Behavior","Social","Emotional","Motor",
+          "Woodcock","Johnson","Wechsler","BASC","Vineland","WISC","WIAT","KTEA","CELF","IEP","PLAAFP","IDEA","FAPE",
+          "LRE","SDC","RSP","SLP","OT","PT","APE","ELD","EL","SEL","California","United","States","County","Unified",
+          "Attention","Memory","Processing","Comprehension","Fluency","Calculation","Reasoning","Verbal","Visual",
+          "Auditory","Executive","Functioning","Adaptive","Academic","Functional","Performance","Strengths","Needs",
+          "Transition","Postsecondary","Independent","Living","Employment","Training","Eligibility","Autism","Other",
+          "Health","Impairment","Specific","Learning","Disability","Emotional","Disturbance","Intellectual","Section",
+          "Table","Chart","Summary","Appendix","Notes","Comments","Signature","Team","Meeting","Review","Triennial",
+          "Initial","Amendment","Addendum","Yes","No","None","Not","Applicable","True","False","High","Low","Average"
+        ]);
+
+        const isLikelyNonName = (word) => {
+          if (commonStopWords.has(word)) return true;
+          if (/(ly|tion|sion|ment|ness|ity|able|ible|ous|ive|ing|ed|ence|ance)$/i.test(word)) return true;
+          return false;
+        };
+
+        const fullText = pages.map((p) => p.text).join("\n");
+
+        const midSentenceRegex = /(?:[a-z,;:]\s+)([A-Z][a-z]{2,14})\b/g;
+        const wordCounts = {};
+        let match;
+        while ((match = midSentenceRegex.exec(fullText)) !== null) {
+          const w = match[1];
+          if (!isLikelyNonName(w)) {
+            wordCounts[w] = (wordCounts[w] || 0) + 1;
+          }
+        }
+
+        let primaryStudentName = "";
+        const headerNameMatch = fullText.match(/(?:Student(?:\s+Name)?|Pupil(?:\s+Name)?)\s*[:\-]\s*([A-Z][a-z]{2,14})/i);
+        if (headerNameMatch && !isLikelyNonName(headerNameMatch[1])) {
+          primaryStudentName = headerNameMatch[1];
+        }
+
+        const sortedNames = Object.entries(wordCounts).sort((a, b) => b[1] - a[1]);
+        if (!primaryStudentName && sortedNames.length > 0 && sortedNames[0][1] >= 4) {
+          primaryStudentName = sortedNames[0][0];
+        }
+
+        if (primaryStudentName && (wordCounts[primaryStudentName] || 0) >= 3) {
+          const strayActionPattern = /\b([A-Z][a-z]{2,14})\s+(will|can|is|was|has|had|demonstrates|demonstrated|struggles|requires|needs|scored|achieved|participates|shows|completed|benefits)\b/g;
+
+          pages.forEach((p) => {
+            let m;
+            while ((m = strayActionPattern.exec(p.text)) !== null) {
+              const candidate = m[1];
+              const charBefore = m.index >= 2 ? p.text.slice(m.index - 2, m.index) : "";
+              const isMidSentence = /[a-z,;:]\s$/.test(charBefore);
+
+              if (
+                candidate &&
+                candidate !== primaryStudentName &&
+                !isLikelyNonName(candidate) &&
+                (wordCounts[candidate] || 0) <= 2 &&
+                isMidSentence
+              ) {
+                const startIdx = Math.max(0, m.index - 45);
+                const endIdx = Math.min(p.text.length, m.index + m[0].length + 65);
+                const snippet = p.text.slice(startIdx, endIdx).trim();
+                const fixedSnippet = snippet.replace(new RegExp(`\\b${candidate}\\b`, "g"), primaryStudentName);
+
+                detectedFixes.push({
+                  id: `scan-${detectedFixes.length}`,
+                  page: `Page ${p.pageNum}`,
+                  issue: `Copy-Paste Name Mismatch ("${candidate}" instead of "${primaryStudentName}")`,
+                  original: snippet,
+                  replacement: fixedSnippet,
+                  status: "pending",
+                });
+              }
+            }
+          });
+        }
+
+        const maleMatches = fullText.match(/\b(he|him|his)\b/gi) || [];
+        const femaleMatches = fullText.match(/\b(she|her|hers)\b/gi) || [];
+        if (maleMatches.length >= 5 && femaleMatches.length >= 1 && femaleMatches.length <= 2) {
+          pages.forEach((p) => {
+            const strayFemale = p.text.match(/[^.?!]*\b(she|her|hers)\b[^.?!]*[.?!]/i);
+            if (strayFemale) {
+              const orig = strayFemale[0].trim();
+              const rep = orig
+                .replace(/\bshe\b/g, "he").replace(/\bShe\b/g, "He")
+                .replace(/\bhers\b/g, "his").replace(/\bHers\b/g, "His")
+                .replace(/\bher\b/g, "him").replace(/\bHer\b/g, "His");
+              detectedFixes.push({
+                id: `scan-${detectedFixes.length}`,
+                page: `Page ${p.pageNum}`,
+                issue: `Pronoun Consistency Warning (Stray "she/her" in predominantly "he/him" IEP)`,
+                original: orig,
+                replacement: rep,
+                status: "pending",
+              });
+            }
+          });
+        } else if (femaleMatches.length >= 5 && maleMatches.length >= 1 && maleMatches.length <= 2) {
+          pages.forEach((p) => {
+            const strayMale = p.text.match(/[^.?!]*\b(he|him|his)\b[^.?!]*[.?!]/i);
+            if (strayMale) {
+              const orig = strayMale[0].trim();
+              const rep = orig
+                .replace(/\bhe\b/g, "she").replace(/\bHe\b/g, "She")
+                .replace(/\bhim\b/g, "her").replace(/\bHim\b/g, "Her")
+                .replace(/\bhis\b/g, "her").replace(/\bHis\b/g, "Her");
+              detectedFixes.push({
+                id: `scan-${detectedFixes.length}`,
+                page: `Page ${p.pageNum}`,
+                issue: `Pronoun Consistency Warning (Stray "he/him" in predominantly "she/her" IEP)`,
+                original: orig,
+                replacement: rep,
+                status: "pending",
+              });
+            }
+          });
+        }
+
+        return detectedFixes;
+      };
+
+      // 1. Initialize AI Engine
+      window.initializeAI = async function() {
+        const statusEl = document.getElementById("model-status");
+        const outputEl = document.getElementById("ai-output");
+        const btn = document.getElementById("init-ai-btn");
+        const selectedModel = document.getElementById("model-select").value;
+
+        btn.disabled = true;
+        statusEl.innerText = "Connecting to WebLLM...";
+        statusEl.className = "text-xs font-mono text-amber-400";
+        outputEl.innerText = `Initializing ${selectedModel} with ${window.maxContextTokens} token context window...\n`;
+
+        try {
+          if (!window.webllmModule) {
+            window.webllmModule = await import("https://esm.run/@mlc-ai/web-llm");
+          }
+
+          window.engine = await window.webllmModule.CreateMLCEngine(
+            selectedModel,
+            {
+              initProgressCallback: (report) => {
+                statusEl.innerText = report.text;
+                outputEl.innerText = `Loading Model: ${report.text}`;
+              },
+            },
+            {
+              context_window_size: window.maxContextTokens,
+            }
+          );
+
+          statusEl.innerText = `AI Engine: Ready (${Math.round(window.maxContextTokens / 1024)}k)`;
+          statusEl.className = "text-xs font-mono text-emerald-400";
+          outputEl.innerText = `✅ ${selectedModel} loaded and ready!\n\nUpload your Draft IEP on the left and click "Run Local Analysis".`;
+          btn.innerText = "Reload AI";
+          btn.disabled = false;
+        } catch (err) {
+          statusEl.innerText = "Init Error";
+          statusEl.className = "text-xs font-mono text-rose-400";
+          outputEl.innerText = `❌ Failed to initialize AI:\n${err.message || err}`;
+          btn.disabled = false;
+        }
+      };
+
+      // 2. Parse PDF Locally + Run Instant Name/Pronoun Pre-Flight Check
+      window.handleFileUpload = async function(inputEl, docType) {
+        const file = inputEl.files[0];
+        if (!file) return;
+        const statusId = docType === "iep" ? "iep-status" : "psych-status";
+        const statusEl = document.getElementById(statusId);
+        const docLabel = docType === "iep" ? "IEP" : "PSYCH EVAL";
+        statusEl.innerText = `Reading ${file.name}...`;
+
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const pdfDoc = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+          let pagesArray = [];
+          let structuredPages = [];
+
+          for (let i = 1; i <= pdfDoc.numPages; i++) {
+            const page = await pdfDoc.getPage(i);
+            const content = await page.getTextContent();
+            const rawPageText = content.items.map((item) => item.str).join(" ");
+
+            const cleanPageText = rawPageText
+              .replace(/\b\d{6,10}\b/g, "[ID_REDACTED]")
+              .replace(/\b\d{3}-\d{2}-\d{4}\b/g, "[SSN_REDACTED]")
+              .replace(/\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b/g, "[PHONE_REDACTED]")
+              .replace(/[._-]{4,}/g, " ")
+              .replace(/\s+/g, " ")
+              .trim();
+
+            structuredPages.push({ pageNum: i, text: cleanPageText });
+            pagesArray.push(`=== START OF ${docLabel} PAGE ${i} ===\n${cleanPageText}\n=== END OF ${docLabel} PAGE ${i} ===`);
+          }
+
+          const finalDocText = pagesArray.join("\n\n");
+
+          if (docType === "iep") {
+            window.iepText = finalDocText;
+            window.iepPages = structuredPages;
+            document.getElementById("final-doc-textarea").value = finalDocText;
+
+            window.instantScannerFixes = window.runDeterministicNameScan(structuredPages);
+            window.proposedFixes = [...window.instantScannerFixes];
+            window.renderFixesQueue();
+
+            if (window.instantScannerFixes.length > 0) {
+              statusEl.innerText = `Parsed ${pdfDoc.numPages} pages • ⚡ Caught ${window.instantScannerFixes.length} name/pronoun mismatch(es)!`;
+            } else {
+              statusEl.innerText = `Parsed ${pdfDoc.numPages} pages (Indexed & PII Scrubbed)`;
+            }
+          } else {
+            window.psychText = finalDocText;
+            statusEl.innerText = `Parsed ${pdfDoc.numPages} pages (Indexed & PII Scrubbed)`;
+          }
+
+          statusEl.className = "text-[11px] font-mono text-emerald-400 mt-1";
+          window.updateTokenEstimate();
+        } catch (err) {
+          statusEl.innerText = `PDF Error: ${err.message}`;
+          statusEl.className = "text-[11px] font-mono text-rose-400 mt-1";
+        }
+      };
+
+      window.stopAnalysis = async function() {
+        if (window.engine) {
+          await window.engine.interruptGenerate();
+          window.stopTimer();
+        }
+      };
+
+      // Bulletproof XML & Markdown Fallback Fix Parser
+      window.parseFixesFromOutput = function(rawText) {
+        const fixes = [];
+        let idx = 0;
+
+        // First pass: extract explicit XML tags (Universally supported by LLMs without markdown drift)
+        const xmlRegex = /<fix>[\s\S]*?<page>([\s\S]*?)<\/page>[\s\S]*?<issue>([\s\S]*?)<\/issue>[\s\S]*?<original>([\s\S]*?)<\/original>[\s\S]*?<replacement>([\s\S]*?)<\/replacement>[\s\S]*?<\/fix>/gi;
+        let xmlMatch;
+        while ((xmlMatch = xmlRegex.exec(rawText)) !== null) {
+          fixes.push({
+            id: `ai-${idx++}`,
+            page: xmlMatch[1].trim(),
+            issue: xmlMatch[2].trim(),
+            original: xmlMatch[3].trim(),
+            replacement: xmlMatch[4].trim(),
+            status: "pending",
+          });
+        }
+
+        // Second pass (Fallback): In case the AI hallucinated Markdown bold headers despite explicit XML instructions
+        if (fixes.length === 0) {
+          const fallbackRegex = /(?:\*\*PAGE\*\*|\*\*Page\*\*|PAGE):\s*([^\n]+)[\s\S]*?(?:\*\*ISSUE\*\*|\*\*Issue\*\*|ISSUE):\s*([^\n]+)[\s\S]*?(?:\*\*ORIGINAL\*\*|\*\*Original\*\*|ORIGINAL):\s*([\s\S]*?)(?=\*\*REPLACEMENT\*\*|\*\*Replacement\*\*|REPLACEMENT)[\s\S]*?:\s*([\s\S]*?)(?=\n\n(?:<|\*\*PAGE|PAGE|$))/gi;
+          let fbMatch;
+          while ((fbMatch = fallbackRegex.exec(rawText)) !== null) {
+             fixes.push({
+               id: `ai-fb-${idx++}`,
+               page: fbMatch[1].trim(),
+               issue: fbMatch[2].trim(),
+               original: fbMatch[3].trim(),
+               replacement: fbMatch[4].trim(),
+               status: "pending"
+             });
+          }
+        }
+        return fixes;
+      };
+
+      // Render Interactive Approval Cards with Individual Copy Buttons
+      window.renderFixesQueue = function() {
+        const container = document.getElementById("fixes-container");
+        const badge = document.getElementById("fix-count-badge");
+        badge.innerText = window.proposedFixes.length;
+
+        if (window.proposedFixes.length === 0) {
+          container.innerHTML = `<div class="text-xs text-slate-400 text-center py-12">No structured fix cards yet. Click "Run Local Analysis" or check the "1. Live Output" tab.</div>`;
+          return;
+        }
+
+        container.innerHTML = window.proposedFixes
+          .map((fix, i) => {
+            const borderClass =
+              fix.status === "approved"
+                ? "border-emerald-500 bg-emerald-950/10"
+                : fix.status === "rejected"
+                ? "border-rose-800/50 bg-slate-950 opacity-50"
+                : "border-slate-700 bg-slate-950";
+
+            const statusBadge =
+              fix.status === "approved"
+                ? `<span class="text-[10px] font-bold bg-emerald-600 text-white px-2 py-0.5 rounded">✓ APPROVED</span>`
+                : fix.status === "rejected"
+                ? `<span class="text-[10px] font-bold bg-rose-900 text-rose-200 px-2 py-0.5 rounded">✕ REJECTED</span>`
+                : `<span class="text-[10px] font-mono bg-amber-950 text-amber-300 border border-amber-700/50 px-2 py-0.5 rounded">Pending Review</span>`;
+
+            return `
+            <div class="border ${borderClass} rounded-xl p-3.5 space-y-2.5 transition-all">
+              <div class="flex justify-between items-center">
+                <div class="flex items-center space-x-2">
+                  <span class="text-xs font-bold text-indigo-400">${fix.page}</span>
+                  <span class="text-xs text-slate-300 font-medium">• ${fix.issue}</span>
+                </div>
+                ${statusBadge}
+              </div>
+
+              <div class="grid grid-cols-2 gap-2.5 text-xs">
+                <div class="bg-rose-950/30 border border-rose-900/50 rounded-lg p-2.5">
+                  <div class="text-[10px] font-bold uppercase text-rose-400 mb-1">Original Text (Found in IEP)</div>
+                  <div class="font-mono text-[11px] text-rose-100 whitespace-pre-wrap select-text">${fix.original}</div>
+                </div>
+                <div class="bg-emerald-950/30 border border-emerald-900/50 rounded-lg p-2.5 flex flex-col">
+                  <div class="text-[10px] font-bold uppercase text-emerald-400 mb-1">Proposed Fix (Editable)</div>
+                  <textarea onchange="window.updateFixReplacement(${i}, this.value)" rows="3" class="w-full flex-grow bg-slate-900/90 border border-emerald-700/50 rounded p-1.5 font-mono text-[11px] text-emerald-100 focus:outline-none focus:border-emerald-400">${fix.replacement}</textarea>
+                </div>
+              </div>
+
+              <div class="flex justify-between items-center pt-1">
+                <button id="copy-card-btn-${i}" onclick="window.copySingleFix(${i})" class="text-[11px] px-2.5 py-1 rounded bg-slate-800 hover:bg-indigo-600 text-slate-300 hover:text-white transition-colors cursor-pointer">
+                  📋 Copy Fix for SEIS
+                </button>
+                <div class="flex space-x-2">
+                  <button onclick="window.setFixStatus(${i}, 'rejected')" class="text-xs px-3 py-1 rounded bg-slate-800 hover:bg-rose-900 text-slate-300 hover:text-white transition-colors cursor-pointer">
+                    Reject
+                  </button>
+                  <button onclick="window.setFixStatus(${i}, 'approved')" class="text-xs font-semibold px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white transition-colors cursor-pointer">
+                    Approve Fix
+                  </button>
+                </div>
+              </div>
+            </div>`;
+          })
+          .join("");
+      };
+
+      window.copySingleFix = function(index) {
+        const fix = window.proposedFixes[index];
+        if (!fix) return;
+        navigator.clipboard.writeText(fix.replacement);
+        const btn = document.getElementById(`copy-card-btn-${index}`);
+        if (btn) {
+          btn.innerText = "✅ Copied!";
+          setTimeout(() => {
+            btn.innerText = "📋 Copy Fix for SEIS";
+          }, 1500);
+        }
+      };
+
+      window.updateFixReplacement = function(index, newText) {
+        if (window.proposedFixes[index]) {
+          window.proposedFixes[index].replacement = newText;
+        }
+      };
+
+      window.setFixStatus = function(index, status) {
+        if (window.proposedFixes[index]) {
+          window.proposedFixes[index].status = status;
+          window.renderFixesQueue();
+        }
+      };
+
+      window.setAllFixesStatus = function(status) {
+        window.proposedFixes.forEach((f) => (f.status = status));
+        window.renderFixesQueue();
+      };
+
+      // Apply Approved Fixes into Final Document
+      window.applyApprovedFixes = function() {
+        let updatedDoc = window.iepText || window.psychText || "";
+        const approved = window.proposedFixes.filter((f) => f.status === "approved");
+
+        if (approved.length === 0) {
+          alert("Please approve at least one fix first (or click 'Approve All').");
+          return;
+        }
+
+        let exactReplacedCount = 0;
+        let appendedNotes = [];
+
+        approved.forEach((fix) => {
+          if (fix.original && updatedDoc.includes(fix.original)) {
+            updatedDoc = updatedDoc.replace(fix.original, fix.replacement);
+            exactReplacedCount++;
+          } else {
+            const escaped = fix.original.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+            const regex = escaped ? new RegExp(escaped, "i") : null;
+            if (regex && regex.test(updatedDoc)) {
+              updatedDoc = updatedDoc.replace(regex, fix.replacement);
+              exactReplacedCount++;
+            } else {
+              appendedNotes.push(`[${fix.page} - ${fix.issue}]\nReplace: "${fix.original}"\nWith: "${fix.replacement}"`);
+            }
+          }
+        });
+
+        if (appendedNotes.length > 0) {
+          updatedDoc =
+            `=== APPROVED CORRECTIONS SUMMARY (READY TO COPY/PASTE) ===\n\n` +
+            appendedNotes.join("\n\n") +
+            `\n\n==========================================================\n\n` +
+            updatedDoc;
+        }
+
+        document.getElementById("final-doc-textarea").value = updatedDoc;
+        document.getElementById("applied-summary").innerText =
+          `✅ Applied ${approved.length} approved fix(es) (${exactReplacedCount} inline replacements, ${appendedNotes.length} summary blocks).`;
+        window.switchTab("final");
+      };
+
+      window.copyFinalText = function() {
+        const textarea = document.getElementById("final-doc-textarea");
+        navigator.clipboard.writeText(textarea.value);
+        document.getElementById("applied-summary").innerText = "📋 Copied full corrected text to clipboard!";
+      };
+
+      window.exportToWord = function() {
+        const text = document.getElementById("final-doc-textarea").value;
+        const htmlContent = `<html><head><meta charset="utf-8"><title>Corrected IEP Document</title></head><body style="font-family: Arial, sans-serif; font-size: 11pt; white-space: pre-wrap;">${text
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")}</body></html>`;
+        const blob = new Blob([htmlContent], { type: "application/msword" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "Corrected_IEP_Draft.doc";
+        a.click();
+        URL.revokeObjectURL(url);
+      };
+
+      // 3. Run Analysis
+      window.runAnalysis = async function() {
+        const outputEl = document.getElementById("ai-output");
+        const runBtn = document.getElementById("run-btn");
+        const stopBtn = document.getElementById("stop-btn");
+        const task = document.getElementById("task-select").value;
+
+        if (!window.engine) {
+          outputEl.innerText = "⚠️ Please click 'Initialize Local AI' in the top right corner first.";
+          return;
+        }
+
+        if (!window.iepText && !window.psychText) {
+          outputEl.innerText = "⚠️ Please upload a Draft IEP PDF on the left first.";
+          return;
+        }
+
+        window.switchTab("stream");
+
+        const pageRule = `CRITICAL PAGE CITATION RULE: Every page in the document is wrapped in markers like "=== START OF IEP PAGE 1 ===" and "=== START OF IEP PAGE 2 ===". Always write the real page number (e.g., "Page 1", "Page 3"). Never write "[page number]".`;
+
+        const taskPrompts = {
+          autofix: `Inspect the document for wrong student names, wrong pronouns, baseline score mismatches, internal contradictions, or vague goal criteria.
+You MUST format every finding using strict XML tags exactly like this example:
+
+<fix>
+  <page>Page 2</page>
+  <issue>Wrong student name used in goal narrative</issue>
+  <original>Ryker will read 90 words per minute with 95% accuracy.</original>
+  <replacement>Kyra will read 90 words per minute with 95% accuracy.</replacement>
+</fix>
+
+Now analyze the uploaded document(s) and output 3 to 6 fixes using that exact XML format. Do not use markdown bolding inside the tags.`,
+
+          proofread: `Proofread the provided IEP document thoroughly and check for internal consistency and compliance issues:
+1. NAME & PRONOUN CHECK: Verify the student's name and pronouns remain consistent across every single page.
+2. INTERNAL CONTRADICTIONS: Check if dates, student grade/age, disability eligibility, or service minutes contradict each other across different pages.
+3. PLAAFP TO GOAL ALIGNMENT: Verify every area of need in Present Levels (PLAAFP) has a matching annual goal with a clear numerical baseline.`,
+
+          audit: `Compare the Draft IEP against the Psych Evaluation (or audit the single uploaded document). List every name mismatch, score discrepancy, accommodation gap, and internal contradiction with exact page numbers.`,
+
+          goals: `Based on the Present Levels (PLAAFP) and evaluation data provided, draft 3 legally defensible, measurable SMART annual goals with clear baseline data and mastery criteria.`,
+
+          jargon: `Rewrite the clinical, psychological, and IEP findings into warm, empathetic, parent-friendly plain language.`,
+        };
+
+        runBtn.disabled = true;
+        stopBtn.classList.remove("hidden");
+        outputEl.innerText = "Step 1/2: Reading document tokens into GPU memory (this prefill step takes ~10-30 seconds before words begin streaming)...";
+        window.startTimer("Step 1/2: Prefilling document tokens into GPU...");
+
+        try {
+          await window.engine.resetChat();
+
+          let userContent = "";
+          if (window.iepText && window.psychText) {
+            userContent = `PRIMARY DOCUMENT (Draft IEP):\n${window.iepText}\n\nSUPPORTING DOCUMENT (Psych Evaluation):\n${window.psychText}`;
+          } else if (window.iepText) {
+            userContent = `DRAFT IEP DOCUMENT:\n${window.iepText}`;
+          } else {
+            userContent = `DOCUMENT:\n${window.psychText}`;
+          }
+
+          const chunks = await window.engine.chat.completions.create({
+            messages: [
+              {
+                role: "system",
+                content: `You are an expert Special Education IEP Proofreader and Compliance Auditor. Do not repeat numbers endlessly.\n\n${pageRule}\n\n${taskPrompts[task]}`,
+              },
+              {
+                role: "user",
+                content: userContent,
+              },
+            ],
+            temperature: 0.25,
+            top_p: 0.9,
+            repetition_penalty: 1.18,
+            frequency_penalty: 0.35,
+            max_tokens: 1500,
+            stream: true,
+          });
+
+          let firstToken = false;
+          let fullOutput = "";
+          for await (const chunk of chunks) {
+            const delta = chunk.choices[0]?.delta?.content || "";
+            if (delta && !firstToken) {
+              firstToken = true;
+              outputEl.innerText = "";
+              document.getElementById("progress-stage").innerText = "Step 2/2: Streaming proposed fixes...";
+            }
+            fullOutput += delta;
+            outputEl.innerText = fullOutput;
+          }
+
+          if (task === "autofix") {
+            const aiFixes = window.parseFixesFromOutput(fullOutput);
+            window.proposedFixes = [...window.instantScannerFixes, ...aiFixes];
+            window.renderFixesQueue();
+            if (window.proposedFixes.length > 0) {
+              window.switchTab("fixes");
+            }
+          }
+        } catch (err) {
+          outputEl.innerText = `Execution Error: ${err.message || err}`;
+        } finally {
+          window.stopTimer();
+          runBtn.disabled = false;
+          stopBtn.classList.add("hidden");
+        }
+      };
+    </script>
+  </body>
+</html>

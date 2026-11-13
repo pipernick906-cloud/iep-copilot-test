@@ -1,0 +1,16 @@
+{
+  "name": "iep-copilot",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  },
+  "dependencies": {
+    "@mlc-ai/web-llm": "^0.2.88",
+    "pdfjs-dist": "^6.5.438"
+  }
+}
